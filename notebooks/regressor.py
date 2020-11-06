@@ -13,13 +13,16 @@ class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
         self.fc1 = nn.Linear(n_inputs, n_hidden)
-        self.act1 = nn.Tanh()
-        self.fc2 = nn.Linear(n_hidden, 1)
+        self.act1 = nn.ReLU()
+        self.fc2 = nn.Linear(n_hidden, n_hidden)
+        self.fc3 = nn.Linear(n_hidden, 1)
 
     def forward(self, x):
         x = self.fc1(x)
         x = self.act1(x)
         x = self.fc2(x)
+        x = self.act1(x)
+        x = self.fc3(x)
         return x
     
     
@@ -41,7 +44,7 @@ class FitNNRegressor(object):
         # Scaling
         X_ss = self.scaler.fit_transform(X)
         # Estimate model
-        self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden)
+        self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).to(device)
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
         y_tensor = torch.as_tensor(y.reshape(-1, 1), dtype=torch.float32, device=device)
@@ -51,15 +54,19 @@ class FitNNRegressor(object):
         loss_func = nn.MSELoss()
         # Estimate optimizer
         if self.optimizer == "Adam":
-            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         elif self.optimizer == "SGD":
-            opt = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.SGD(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         elif self.optimizer == "RMSprop":
-            opt = torch.optim.RMSprop(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.RMSprop(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         else:
-            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         # Enable droout
         self.model.train(True)
+        
+        best_loss = float('inf')
+        best_state = None
+        
         # Start the model fit
         for epoch_i in range(self.n_epochs):
             loss_history = []
@@ -67,11 +74,6 @@ class FitNNRegressor(object):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)
-                lam = torch.tensor(self.lam)
-                l2_reg = torch.tensor(0.)
-                for param in self.model.parameters():
-                    l2_reg += torch.norm(param)
-                loss += lam * l2_reg
                 # set gradients to zero
                 opt.zero_grad()
                 # backpropagate gradients
@@ -81,6 +83,10 @@ class FitNNRegressor(object):
                 loss_history.append(loss.item())
             if self.debug:
                 print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
+            if np.mean(loss_history) < best_loss:
+                best_loss = np.mean(loss_history)
+                best_state = self.model.state_dict()
+        self.model.load_state_dict(best_state)
     
     def predict(self, X):
         # Scaling
