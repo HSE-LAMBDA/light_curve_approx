@@ -1,0 +1,3 @@
+git checkout alexstart
+git add .
+git push
