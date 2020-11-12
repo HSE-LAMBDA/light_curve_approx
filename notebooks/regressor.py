@@ -15,6 +15,7 @@ class NNRegressor(nn.Module):
         self.fc1 = nn.Linear(n_inputs, n_hidden)
         self.act1 = nn.Tanh()
         self.fc2 = nn.Linear(n_hidden, 1)
+        
 
     def forward(self, x):
         x = self.fc1(x)
@@ -41,7 +42,7 @@ class FitNNRegressor(object):
         # Scaling
         X_ss = self.scaler.fit_transform(X)
         # Estimate model
-        self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden)
+        self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).cuda(device)
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
         y_tensor = torch.as_tensor(y.reshape(-1, 1), dtype=torch.float32, device=device)
@@ -67,11 +68,13 @@ class FitNNRegressor(object):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)
+                """
                 lam = torch.tensor(self.lam)
                 l2_reg = torch.tensor(0.)
                 for param in self.model.parameters():
                     l2_reg += torch.norm(param)
                 loss += lam * l2_reg
+                """
                 # set gradients to zero
                 opt.zero_grad()
                 # backpropagate gradients
