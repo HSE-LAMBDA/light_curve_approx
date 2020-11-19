@@ -13,18 +13,14 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
-        self.fc1 = nn.Linear(n_inputs, n_hidden)
-        self.act1 = nn.ReLU()
-        self.fc2 = nn.Linear(n_hidden, n_hidden)
-        self.fc3 = nn.Linear(n_hidden, 1)
+        self.seq = nn.Sequential(nn.Linear(n_inputs, n_hidden),
+                    nn.ReLU(),
+                    nn.Linear(n_hidden, n_hidden),
+                    nn.ReLU(),
+                    nn.Linear(n_hidden, 1))
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.act1(x)
-        x = self.fc2(x)
-        x = self.act1(x)
-        x = self.fc3(x)
-        return x
+        return self.seq(x)
     
     
 class FitNNRegressor(object):
@@ -44,7 +40,7 @@ class FitNNRegressor(object):
         self.model = NNRegressor(n_inputs=X.shape[1], n_hidden=self.n_hidden).to(device)
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
-        y_tensor = torch.as_tensor(y.reshape(-1, 1), dtype=torch.float32, device=device)
+        y_tensor = torch.as_tensor(y, dtype=torch.float32, device=device)
         # Create dataset for trainig procedure
         train_data = TensorDataset(X_tensor, y_tensor)
         # Estimate loss
