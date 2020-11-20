@@ -76,12 +76,9 @@ class FitNNRegressor(object):
                 loss = loss_func(y_batch, y_pred_batch)
                 
                 lam = torch.tensor(self.lam)
-                l2_reg = torch.tensor(0.)
+                l2_reg = torch.tensor(0.).to(device)
                 for param in self.model.parameters():
-                    if 12_reg = None:
-                        12_reg = torch.norm(param)
-                    else:
-                        l2_reg += torch.norm(param)
+                    l2_reg += torch.norm(param)
                 loss += lam * l2_reg
                 
                 # set gradients to zero
