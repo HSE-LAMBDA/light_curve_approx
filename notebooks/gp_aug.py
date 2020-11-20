@@ -6,23 +6,17 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, RationalQuadratic, WhiteKernel, ConstantKernel as C
 
 
-def add_log_lam(data, passband2lam):
-    passbands = data.passband.values
-    log_lam = [passband2lam[i] for i in passbands]
-    data['log_lam'] = log_lam
-    return data
+def add_log_lam(passband, passband2lam):
+    log_lam = np.array([passband2lam[i] for i in passband])
+    return log_lam
 
-def create_aug_data(mjd_min, mjd_max, n_passbands, n_obs=1000):
-    dfs = []
-    for passband in range(n_passbands):
-        df = pd.DataFrame()
-        df['mjd'] = np.linspace(mjd_min, mjd_max, n_obs)
-        df['passband'] = passband
-        df['flux'] = 0
-        df['flux_err'] = 0
-        dfs.append(df)
-    data = pd.concat(dfs, axis=0)
-    return data
+def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
+    t = []
+    passband = []
+    for i_pb in range(n_passbands):
+        t += list(np.linspace(t_min, t_max, n_obs))
+        passband += [i_pb]*n_obs
+    return np.array(t), np.array(passband)
 
 
 class GaussianProcessesAugmentation(object):
@@ -46,21 +40,29 @@ class GaussianProcessesAugmentation(object):
         self.reg = None
     
     
-    def fit(self, data):
+    def fit(self, t, flux, flux_err, passband):
         """
         Fit an augmentation model.
         
         Parameters:
         -----------
-        data : panda.DataFrame
-            A Data Frame with light curve observations. 
-            Mandatory columns: ['mjd', 'passband', 'flux', 'flux_err'].
+        t : array-like
+            Timestamps of light curve observations.
+        flux : array-like
+            Flux of the light curve observations.
+        flux_err : array-like
+            Flux errors of the light curve observations.
+        passband : array-like
+            Passband IDs for each observation.
         """
         
-        data = add_log_lam(data, self.passband2lam)
+        t        = np.array(t)
+        flux     = np.array(flux)
+        flux_err = np.array(flux_err)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X = data[['mjd', 'log_lam']].values
-        y = data['flux'].values
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         
         self.ss = StandardScaler()
         X_ss = self.ss.fit_transform(X)
@@ -69,67 +71,64 @@ class GaussianProcessesAugmentation(object):
         self.reg = GaussianProcessRegressor(kernel=kernel, normalize_y=True, n_restarts_optimizer=5, 
                                             optimizer="fmin_l_bfgs_b", random_state=42)
 
-        self.reg.fit(X_ss, y)
+        self.reg.fit(X_ss, flux)
     
     
-    def predict(self, data, copy=True):
+    def predict(self, t, passband, copy=True):
         """
         Apply the augmentation model to the given observation mjds.
         
         Parameters:
         -----------
-        data : panda.DataFrame
-            A Data Frame with light curve observations. 
-            Mandatory columns: ['mjd', 'passband', 'flux', 'flux_err'].
+        t : array-like
+            Timestamps of light curve observations.
+        passband : array-like
+            Passband IDs for each observation.
             
         Returns:
         --------
-        out_data : panda.DataFrame
-            A Data Frame with light curve observations, where 'flux' and 'flux_err' are estimated by the augmentation model. 
-            Columns: ['mjd', 'passband', 'flux', 'flux_err'].
+        flux_pred : array-like
+            Flux of the light curve observations, approximated by the augmentation model.
+        flux_err_pred : array-like
+            Flux errors of the light curve observations, estimated by the augmentation model.
         """
         
-        data = add_log_lam(data, self.passband2lam)
+        t        = np.array(t)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X     = data[['mjd', 'log_lam']].values
-        y     = data['flux'].values
-        y_err = data['flux_err'].values
-        
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         X_ss = self.ss.transform(X)
         
-        y_pred, y_std_pred = self.reg.predict(X_ss, return_std=True)
+        flux_pred, flux_err_pred = self.reg.predict(X_ss, return_std=True)
         
-        if copy:
-            out_data = data.copy()
-        else:
-            out_data = data
-        
-        out_data['flux']     = y_pred
-        out_data['flux_err'] = y_std_pred
-        
-        return out_data
+        return flux_pred, flux_err_pred
         
     
-    def augmentation(self, data, n_obs=100):
+    def augmentation(self, t_min, t_max, n_obs=100):
         """
         The light curve augmentation.
         
         Parameters:
         -----------
-        data : panda.DataFrame
-            A Data Frame with light curve observations. 
-            Mandatory columns: ['mjd', 'passband', 'flux', 'flux_err'].
+        t_min, t_max : float
+            Min and max timestamps of light curve observations.
+        n_obs : int
+            Number of observations in each passband required.
             
         Returns:
         --------
-        aug_data : panda.DataFrame
-            A Data Frame with light curve observations, where 'flux' and 'flux_err' are estimated by the augmentation model. 
-            Columns: ['mjd', 'passband', 'flux', 'flux_err'].
+        t_aug : array-like
+            Timestamps of light curve observations.
+        flux_aug : array-like
+            Flux of the light curve observations, approximated by the augmentation model.
+        flux_err_aug : array-like
+            Flux errors of the light curve observations, estimated by the augmentation model.
+        passband_aug : array-like
+            Passband IDs for each observation.
         """
         
-        mjd = data['mjd'].values
+        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
+        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
         
-        aug_data = create_aug_data(mjd.min(), mjd.max(), len(self.passband2lam), n_obs)
-        aug_data = self.predict(aug_data, copy=True)
-        
-        return aug_data
+        return t_aug, flux_aug, flux_err_aug, passband_aug
