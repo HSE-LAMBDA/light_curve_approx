@@ -1,1 +1,1 @@
-# light_curve_approx
+# light_curve_approx project
