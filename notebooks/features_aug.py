@@ -52,6 +52,14 @@ class FeaturesEngineeringAugmentation(object):
             Timestamps of light curve observations.
         t_square : array-like
             Squares of the timestamps
+        t_cube : array-like
+            Cubes of the timestamps.
+        t_exp : array-like
+            Exponent of minus timestamps.
+        t_del : array-like
+            1 / timestamps.
+        t_min_2 : array-like
+            Squares of difference (timestampe - minimum(timestamps)).
         flux : array-like
             Flux of the light curve observations.
         flux_err : array-like
@@ -97,6 +105,16 @@ class FeaturesEngineeringAugmentation(object):
         -----------
         t : array-like
             Timestamps of light curve observations.
+        t_square : array-like
+            Squares of the timestamps
+        t_cube : array-like
+            Cubes of the timestamps.
+        t_exp : array-like
+            Exponent of minus timestamps.
+        t_del : array-like
+            1 / timestamps.
+        t_min_2 : array-like
+            Squares of difference (timestampe - minimum(timestamps)).
         passband : array-like
             Passband IDs for each observation.
             
