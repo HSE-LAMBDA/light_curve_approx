@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,10 +10,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
-        super(NNRegressor, self).__init__()
-        self.fc1 = nn.Linear(n_inputs, n_hidden)
-        self.fc2 = nn.Linear(n_hidden, n_hidden)
-        self.fc3 = nn.Linear(n_hidden, 1)
+        super(NNRegressor, self).__init__()        
+        self.fc1 = nn.Linear(n_inputs, n_hidden//2)
+        self.fc2 = nn.Linear(n_hidden//2, n_hidden//4)
+        self.fc3 = nn.Linear(n_hidden//4, n_hidden//4)
+        self.fc4 = nn.Linear(n_hidden//4, 1)
+        
         self.act1 = nn.ReLU()
 
     def forward(self, x):
@@ -23,12 +24,14 @@ class NNRegressor(nn.Module):
         x = self.fc2(x)
         x = self.act1(x)
         x = self.fc3(x)
+        x = self.act1(x)
+        x = self.fc4(x)
         return x
     
     
 class FitNNRegressor(object):
     
-    def __init__(self, n_hidden=400, n_epochs=10, batch_size=64, lr=0.01, lam=1., optimizer='Adam', debug=0):        
+    def __init__(self, n_hidden=40, n_epochs=10, batch_size=64, lr=0.01, lam=1., optimizer='Adam', debug=0):        
         self.model = None
         self.n_hidden = n_hidden
         self.n_epochs = n_epochs
@@ -39,7 +42,7 @@ class FitNNRegressor(object):
         self.debug = debug
         self.scaler = StandardScaler()
         
-    
+
     def fit(self, X, y):
         # Scaling
         X_ss = self.scaler.fit_transform(X)
@@ -96,6 +99,7 @@ class FitNNRegressor(object):
             best_state = self.model.state_dict()
         
         self.model.load_state_dict(best_state)
+    
     
     def predict(self, X):
         # Scaling
