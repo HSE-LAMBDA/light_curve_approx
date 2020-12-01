@@ -1,12 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
-import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
-
-import utils
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
