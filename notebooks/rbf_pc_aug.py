@@ -5,8 +5,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
 
-import regressor
-
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
@@ -20,10 +18,21 @@ def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
         passband += [i_pb]*n_obs
     return np.array(t), np.array(passband)
 
+def rbf(X, c, s):
+    diffs = (X ** 2).sum(axis=1).reshape(-1, 1) + (c ** 2).sum(axis=1).reshape(1, -1) \
+          - 2 * X @ c.T
+    diffs = -1 * diffs / (2 * s ** 2).reshape(1, -1)
+    return np.exp(diffs)
+
+def calculate_cluster_std(centers):
+    diffs = (centers ** 2).sum(axis=1).reshape(-1, 1) + (centers ** 2).sum(axis=1).reshape(1, -1) \
+          - 2 * centers @ centers.T
+    return np.sqrt(np.maximum(diffs, 0)).max() / np.sqrt(2 * centers.shape[0])
+
 
 class RBFNetAugmentation(object):
     
-    def __init__(self, passband2lam, **reg_kwargs):
+    def __init__(self, passband2lam, n_hidden=18, regularization=None, reg_alpha=1e-2):
         """
         Light Curve Augmentation based on Radial Basis Function Network
         https://pythonmachinelearning.pro/using-neural-networks-for-regression-radial-basis-function-networks/
@@ -44,11 +53,19 @@ class RBFNetAugmentation(object):
             
         reg_alpha : float
             Regularization coefficient, bigger means stronger regularization and weaker model.
-        """        
+        """
+        assert n_hidden % len(passband2lam) == 0
+        
         self.passband2lam = passband2lam
-        self.reg_kwargs = reg_kwargs
+        self.n_hidden = n_hidden
+        self.regularization = regularization
+        self.reg_alpha = reg_alpha
         
         self.ss = None
+        
+        self.centers = None
+        self.stds = None
+        
         self.reg = None
         
     
@@ -77,8 +94,29 @@ class RBFNetAugmentation(object):
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         
-        self.reg = regressor.FitNNRegressor(**self.reg_kwargs)
-        self.reg.fit(X, flux, model_type="RBF")
+        self.ss = StandardScaler()
+        X_ss = self.ss.fit_transform(X)
+        
+        n_time = self.n_hidden // len(self.passband2lam)
+        n_lam = len(self.passband2lam)
+        time_centers = np.linspace(X_ss[:, 0].min(), X_ss[:, 1].max(), n_time)
+        lam_centers = (np.array(list(self.passband2lam.values())) - self.ss.mean_[1]) / self.ss.var_[1] ** 0.5
+        self.centers = np.concatenate([
+            np.concatenate([time_centers] * n_lam).reshape(-1, 1),
+            np.concatenate([lam_centers] * n_time).reshape(n_time, n_lam).T.reshape(-1, 1)
+        ], axis=1)
+        self.stds = np.full(self.n_hidden, calculate_cluster_std(self.centers))
+        
+        X_ss_rbf = rbf(X_ss, self.centers, self.stds)
+        
+        if self.regularization == 'l2':
+            self.reg = Ridge(self.reg_alpha)
+        elif self.regularization == 'l1':
+            self.reg = Lasso(self.reg_alpha)
+        else:
+            self.reg = LinearRegression()
+           
+        self.reg.fit(X_ss_rbf, flux)
     
     
     def predict(self, t, passband, copy=True):
@@ -105,8 +143,10 @@ class RBFNetAugmentation(object):
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        X_ss = self.ss.transform(X)
+        X_ss_rbf = rbf(X_ss, self.centers, self.stds)
         
-        flux_pred = self.reg.predict(X)
+        flux_pred = self.reg.predict(X_ss_rbf)
         flux_err_pred = np.empty(flux_pred.shape)
         
         return np.maximum(0, flux_pred), flux_err_pred
