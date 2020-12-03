@@ -8,6 +8,20 @@ from sklearn.preprocessing import StandardScaler
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+def add_log_lam(passband, passband2lam):
+    log_lam = np.array([passband2lam[i] for i in passband])
+    return log_lam
+
+
+def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
+    t = []
+    passband = []
+    for i_pb in range(n_passbands):
+        t += list(np.linspace(t_min, t_max, n_obs))
+        passband += [i_pb]*n_obs
+    return np.array(t), np.array(passband)
+
+
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()        
@@ -112,3 +126,49 @@ class FitNNRegressor(object):
         y_pred = self.model(X_tensor)
         y_pred = y_pred.cpu().detach().numpy()
         return y_pred
+
+    
+class NNProcessesAugmentation(object):
+    
+    def __init__(self, passband2lam):
+        self.passband2lam = passband2lam
+        self.ss = None
+        self.reg = None
+
+    
+    def fit(self, t, flux, flux_err, passband):
+        t        = np.array(t)
+        flux     = np.array(flux)
+        flux_err = np.array(flux_err)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        self.ss = StandardScaler()
+        X_ss = self.ss.fit_transform(X)
+        
+        self.reg = FitNNRegressor(n_hidden=400, n_epochs=100, batch_size=1, lr=0.01, lam=1., optimizer='RMSprop')
+        
+        self.reg.fit(X_ss, flux)
+
+    def predict(self, t, passband, copy=True):
+        t        = np.array(t)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        X_ss = self.ss.transform(X)
+        
+        flux_pred = self.reg.predict(X_ss)
+        
+        return flux_pred
+    
+    
+    def augmentation(self, t_min, t_max, n_obs=100):
+        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
+        flux_aug = self.predict(t_aug, passband_aug, copy=True)
+        
+        return t_aug, flux_aug, passband_aug
+
+
+        
