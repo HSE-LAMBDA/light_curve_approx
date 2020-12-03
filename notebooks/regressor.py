@@ -19,7 +19,7 @@ def inverse_quadratic(alpha):
 
 # https://github.com/JeremyLinux/PyTorch-Radial-Basis-Function-Layer/blob/master/Torch%20RBF/torch_rbf.py
 class RBF(nn.Module):
-    def __init__(self, in_features, out_features, basis_func=inverse_quadratic):
+    def __init__(self, in_features, out_features, basis_func=gaussian):
         super(RBF, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
