@@ -13,11 +13,11 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
-        self.seq = nn.Sequential(nn.Linear(n_inputs, 200),
+        self.seq = nn.Sequential(nn.Linear(n_inputs, n_hidden),
                     nn.ReLU(),
-                    nn.Linear(200, 150),
-                    nn.ReLU(),
-                    nn.Linear(150, 1))
+                    nn.Linear(n_hidden, 1))#,
+                    #nn.ReLU(),
+                    #nn.Linear(150, 1))
 
     def forward(self, x):
         return self.seq(x)

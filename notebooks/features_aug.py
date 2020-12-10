@@ -23,11 +23,11 @@ class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
         self.seq = nn.Sequential(
-            nn.Linear(n_inputs, 200),
+            nn.Linear(n_inputs, 100),
             nn.ReLU(),
-            nn.Linear(200, 150),
+            nn.Linear(100, 25),
             nn.ReLU(),
-            nn.Linear(150, 1))
+            nn.Linear(25, 1))
 
     def forward(self, x):
         return self.seq(x)
@@ -129,16 +129,12 @@ class FeaturesEngineeringAugmentation(object):
         -----------
         t : array-like
             Timestamps of light curve observations.
+        t_min : array-like
+            Difference (timestamps - minimum(timestamps)).
         t_square : array-like
-            Squares of the timestamps
-        t_cube : array-like
-            Cubes of the timestamps.
+            Squares of the t_min differences.
         t_exp : array-like
-            Exponent of minus timestamps.
-        t_del : array-like
-            1 / timestamps.
-        t_min_2 : array-like
-            Squares of difference (timestampe - minimum(timestamps)).
+            Exponent of the minus t_min differences.
         flux : array-like
             Flux of the light curve observations.
         flux_err : array-like
@@ -148,11 +144,9 @@ class FeaturesEngineeringAugmentation(object):
         """
         
         t        = np.array(t)
-        t_square = np.power(np.array(t), 2)
-        t_cube   = np.power(np.array(t), 3)
-        t_exp    = np.exp(-np.array(t))
-        t_del    = 1 / np.array(t)
-        t_min_2  = (np.array(t) - np.array(t).min()) ** 2
+        t_min    = np.array(t) - np.array(t).min()
+        t_square = np.power(t_min, 2)
+        t_exp    = np.exp(-t_min)
         
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
@@ -160,11 +154,9 @@ class FeaturesEngineeringAugmentation(object):
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         X = np.concatenate((t.reshape((-1, 1)),
+                            t_min.reshape((-1, 1)),
                             t_square.reshape((-1, 1)),
-                            t_cube.reshape((-1, 1)),
                             t_exp.reshape((-1, 1)),
-                            t_del.reshape((-1, 1)),
-                            t_min_2.reshape((-1, 1)), 
                             log_lam.reshape((-1, 1))), axis=1)
         
         self.ss_x = StandardScaler().fit(X)
@@ -184,16 +176,12 @@ class FeaturesEngineeringAugmentation(object):
         -----------
         t : array-like
             Timestamps of light curve observations.
+        t_min : array-like
+            Difference (timestamps - minimum(timestamps)).
         t_square : array-like
-            Squares of the timestamps
-        t_cube : array-like
-            Cubes of the timestamps.
+            Squares of the t_min differences.
         t_exp : array-like
-            Exponent of minus timestamps.
-        t_del : array-like
-            1 / timestamps.
-        t_min_2 : array-like
-            Squares of difference (timestampe - minimum(timestamps)).
+            Exponent of the minus t_min differences.
         passband : array-like
             Passband IDs for each observation.
             
@@ -206,21 +194,17 @@ class FeaturesEngineeringAugmentation(object):
         """
         
         t        = np.array(t)
-        t_square = np.power(np.array(t), 2)
-        t_cube   = np.power(np.array(t), 3)
-        t_exp    = np.exp(-np.array(t))
-        t_del    = 1 / np.array(t)
-        t_min_2  = (np.array(t) - np.array(t).min()) ** 2
+        t_min    = np.array(t) - np.array(t).min()
+        t_square = np.power(t_min, 2)
+        t_exp    = np.exp(-t_min)
         
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         X = np.concatenate((t.reshape((-1, 1)),
+                            t_min.reshape((-1, 1)),
                             t_square.reshape((-1, 1)),
-                            t_cube.reshape((-1, 1)),
                             t_exp.reshape((-1, 1)),
-                            t_del.reshape((-1, 1)),
-                            t_min_2.reshape((-1, 1)), 
                             log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.ss_x.transform(X)
         
