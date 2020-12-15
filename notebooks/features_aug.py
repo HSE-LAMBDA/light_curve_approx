@@ -25,9 +25,9 @@ class NNRegressor(nn.Module):
         self.seq = nn.Sequential(
             nn.Linear(n_inputs, 100),
             nn.ReLU(),
-            nn.Linear(100, 25),
+            nn.Linear(100, 50),
             nn.ReLU(),
-            nn.Linear(25, 1))
+            nn.Linear(50, 1))
 
     def forward(self, x):
         return self.seq(x)
@@ -118,6 +118,7 @@ class FeaturesEngineeringAugmentation(object):
         
         self.ss_x = None
         self.ss_y = None
+        self.ss_t = None
         self.reg = None
     
     
@@ -127,14 +128,24 @@ class FeaturesEngineeringAugmentation(object):
         
         Parameters:
         -----------
-        t : array-like
-            Timestamps of light curve observations.
         t_min : array-like
             Difference (timestamps - minimum(timestamps)).
+        t : array-like
+            Scaled timestamps of light curve observations.
         t_square : array-like
-            Squares of the t_min differences.
+            Squares of the scaled timestamps.
+        t_cube : array-like
+            Cubes of the scaled timestamps.
+        t_del : array-like
+            1 / scaled timestamps.
         t_exp : array-like
-            Exponent of the minus t_min differences.
+            Exponent of the scaled timestamps.
+        t_exp_m : array-like
+            Exponent of minus scaled timestamps.
+        t_sin : array-like
+            Sinus of the scaled timestamps.
+        t_sinh : array-like
+            Hyperbolic sinus of the scaled timestamps.
         flux : array-like
             Flux of the light curve observations.
         flux_err : array-like
@@ -142,25 +153,37 @@ class FeaturesEngineeringAugmentation(object):
         passband : array-like
             Passband IDs for each observation.
         """
-        
-        t        = np.array(t)
-        t_min    = np.array(t) - np.array(t).min()
-        t_square = np.power(t_min, 2)
-        t_exp    = np.exp(-t_min)
+        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
+
+        t_min    = t - np.array(t).min()
+        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
+        t_square = np.power(t, 2)
+        t_cube   = np.power(t, 3)
+        t_del    = 1 / (t + 10)
+        t_exp    = np.exp(t)
+        t_exp_m  = np.exp(-t)
+        t_sin    = np.sin(t)
+        t_sinh   = np.sinh(t)
         
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X = np.concatenate((t.reshape((-1, 1)),
+        X = np.concatenate((t,
                             t_min.reshape((-1, 1)),
-                            t_square.reshape((-1, 1)),
-                            t_exp.reshape((-1, 1)),
+                            t_square,
+                            t_cube,
+                            t_exp,
+                            t_exp_m,
+                            t_del,
+                            t_sin,
+                            t_sinh,
                             log_lam.reshape((-1, 1))), axis=1)
         
         self.ss_x = StandardScaler().fit(X)
         X_ss = self.ss_x.transform(X)
+        
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
 
@@ -174,14 +197,24 @@ class FeaturesEngineeringAugmentation(object):
         
         Parameters:
         -----------
-        t : array-like
-            Timestamps of light curve observations.
         t_min : array-like
             Difference (timestamps - minimum(timestamps)).
+        t : array-like
+            Scaled timestamps of light curve observations.
         t_square : array-like
-            Squares of the t_min differences.
+            Squares of the scaled timestamps.
+        t_cube : array-like
+            Cubes of the scaled timestamps.
+        t_del : array-like
+            1 / scaled timestamps.
         t_exp : array-like
-            Exponent of the minus t_min differences.
+            Exponent of the scaled timestamps.
+        t_exp_m : array-like
+            Exponent of minus scaled timestamps.
+        t_sin : array-like
+            Sinus of the scaled timestamps.
+        t_sinh : array-like
+            Hyperbolic sinus of the scaled timestamps.
         passband : array-like
             Passband IDs for each observation.
             
@@ -193,18 +226,28 @@ class FeaturesEngineeringAugmentation(object):
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
         
-        t        = np.array(t)
-        t_min    = np.array(t) - np.array(t).min()
-        t_square = np.power(t_min, 2)
-        t_exp    = np.exp(-t_min)
+        t_min    = t - np.array(t).min()
+        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
+        t_square = np.power(t, 2)
+        t_cube   = np.power(t, 3)
+        t_del    = 1 / (t + 10)
+        t_exp    = np.exp(t)
+        t_exp_m  = np.exp(-t)
+        t_sin    = np.sin(t)
+        t_sinh   = np.sinh(t)
         
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X = np.concatenate((t.reshape((-1, 1)),
+        X = np.concatenate((t,
                             t_min.reshape((-1, 1)),
-                            t_square.reshape((-1, 1)),
-                            t_exp.reshape((-1, 1)),
+                            t_square,
+                            t_cube,
+                            t_exp,
+                            t_exp_m,
+                            t_del,
+                            t_sin,
+                            t_sinh,
                             log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.ss_x.transform(X)
         
