@@ -54,17 +54,13 @@ class FitNNRegressor(object):
         self.lam = lam
         self.optimizer = optimizer
         self.debug = debug
-        self.scaler = StandardScaler()
         
 
     def fit(self, X, y):
-        # Scaling
-        X_ss = self.scaler.fit_transform(X)
-        #y_ss = self.scaler.fit(X, y)
         # Estimate model
-        self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).cuda(device)
+        self.model = NNRegressor(n_inputs=X.shape[1], n_hidden=self.n_hidden).cuda(device)
         # Convert X and y into torch tensors
-        X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
+        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
         y_tensor = torch.as_tensor(y.reshape(-1, 1), dtype=torch.float32, device=device)
         # Create dataset for trainig procedure
         train_data = TensorDataset(X_tensor, y_tensor)
@@ -117,12 +113,10 @@ class FitNNRegressor(object):
     
     
     def predict(self, X):
-        # Scaling
-        X_ss = self.scaler.transform(X)
         # Disable droout
         self.model.train(False)
         # Convert X and y into torch tensors
-        X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
+        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
         # Make predictions for X 
         y_pred = self.model(X_tensor)
         y_pred = y_pred.cpu().detach().numpy()
@@ -144,7 +138,6 @@ class NNProcessesAugmentation(object):
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
         self.passband2lam = passband2lam
-        self.ss = StandardScaler()
         self.reg = None
         self.y_ss = None
         self.X_ss = None
@@ -171,18 +164,18 @@ class NNProcessesAugmentation(object):
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
-        """
+        
         self.y_ss = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.y_ss.transform(flux.reshape((-1, 1)))
-        """
+        
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        self.X_ss = StandardScaler().fit(X, flux)
+        self.X_ss = StandardScaler().fit(X)
         X_ss = self.X_ss.transform(X)
         
         self.reg = FitNNRegressor(n_hidden=400, n_epochs=100, batch_size=1, lr=0.01, lam=1., optimizer='RMSprop')
         
-        self.reg.fit(X_ss, flux)
+        self.reg.fit(X_ss, y_ss)
 
     def predict(self, t, passband):
         """
@@ -209,7 +202,7 @@ class NNProcessesAugmentation(object):
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         X_ss = self.X_ss.transform(X)
         
-        flux_pred = self.reg.predict(X_ss)
+        flux_pred = self.y_ss.inverse_transform(self.reg.predict(X_ss)) 
         flux_err_pred = np.empty(flux_pred.shape)
         
         return np.maximum(flux_pred, 0), flux_err_pred
