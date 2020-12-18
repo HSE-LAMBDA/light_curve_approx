@@ -138,9 +138,10 @@ class NNProcessesAugmentation(object):
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
         self.passband2lam = passband2lam
-        self.reg = None
-        self.y_ss = None
-        self.X_ss = None
+        
+        self.reg      = None
+        self.y_scaler = None
+        self.X_scaler = None
 
     
     def fit(self, t, flux, flux_err, passband):
@@ -165,13 +166,13 @@ class NNProcessesAugmentation(object):
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         
-        self.y_ss = StandardScaler().fit(flux.reshape((-1, 1)))
-        y_ss = self.y_ss.transform(flux.reshape((-1, 1)))
+        self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
+        y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
         
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        self.X_ss = StandardScaler().fit(X)
-        X_ss = self.X_ss.transform(X)
+        self.X_scaler = StandardScaler().fit(X)
+        X_ss = self.X_scaler.transform(X)
         
         self.reg = FitNNRegressor(n_hidden=400, n_epochs=100, batch_size=1, lr=0.01, lam=1., optimizer='RMSprop')
         
@@ -200,9 +201,9 @@ class NNProcessesAugmentation(object):
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        X_ss = self.X_ss.transform(X)
+        X_ss = self.X_scaler.transform(X)
         
-        flux_pred = self.y_ss.inverse_transform(self.reg.predict(X_ss)) 
+        flux_pred = self.y_scaler.inverse_transform(self.reg.predict(X_ss)) 
         flux_err_pred = np.empty(flux_pred.shape)
         
         return np.maximum(flux_pred, 0), flux_err_pred
