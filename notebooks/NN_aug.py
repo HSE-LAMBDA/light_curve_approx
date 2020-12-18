@@ -165,20 +165,17 @@ class NNProcessesAugmentation(object):
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
-        
-        self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
-        y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
-        
-        
-        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         self.X_scaler = StandardScaler().fit(X)
         X_ss = self.X_scaler.transform(X)
         
-        self.reg = FitNNRegressor(n_hidden=400, n_epochs=100, batch_size=1, lr=0.01, lam=1., optimizer='RMSprop')
-        
+        self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
+        y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
+ 
+        self.reg = FitNNRegressor(n_hidden=400, n_epochs=200, batch_size=1, lr=0.01, lam=0.01, optimizer='SGD')
         self.reg.fit(X_ss, y_ss)
 
-    def predict(self, t, passband):
+    def predict(self, t, passband, copy=True):
         """
         Apply the augmentation model to the given observation mjds.
         
@@ -200,7 +197,7 @@ class NNProcessesAugmentation(object):
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.X_scaler.transform(X)
         
         flux_pred = self.y_scaler.inverse_transform(self.reg.predict(X_ss)) 
@@ -232,9 +229,7 @@ class NNProcessesAugmentation(object):
             Passband IDs for each observation.
         """
         t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug)
+        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
         
         return t_aug, flux_aug, flux_err_aug, passband_aug
 
-
-        
