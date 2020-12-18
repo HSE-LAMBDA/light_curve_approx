@@ -60,6 +60,7 @@ class FitNNRegressor(object):
     def fit(self, X, y):
         # Scaling
         X_ss = self.scaler.fit_transform(X)
+        #y_ss = self.scaler.fit(X, y)
         # Estimate model
         self.model = NNRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).cuda(device)
         # Convert X and y into torch tensors
@@ -131,44 +132,115 @@ class FitNNRegressor(object):
 class NNProcessesAugmentation(object):
     
     def __init__(self, passband2lam):
+        """
+        Light Curve Augmentation based on FitNNRegressor
+        
+        Parameters:
+        -----------
+        passband2lam : dict
+            A dictionary, where key is a passband ID and value is Log10 of its wave length.
+            Example: 
+                passband2lam  = {0: np.log10(3751.36), 1: np.log10(4741.64), 2: np.log10(6173.23), 
+                                 3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
+        """
         self.passband2lam = passband2lam
-        self.ss = None
+        self.ss = StandardScaler()
         self.reg = None
+        self.y_ss = None
+        self.X_ss = None
 
     
     def fit(self, t, flux, flux_err, passband):
+        """
+        Fit an augmentation model.
+        
+        Parameters:
+        -----------
+        t : array-like
+            Timestamps of light curve observations.
+        flux : array-like
+            Flux of the light curve observations.
+        flux_err : array-like
+            Flux errors of the light curve observations.
+        passband : array-like
+            Passband IDs for each observation.
+        """
         t        = np.array(t)
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
+        """
+        self.y_ss = StandardScaler().fit(flux.reshape((-1, 1)))
+        y_ss = self.y_ss.transform(flux.reshape((-1, 1)))
+        """
+        
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        self.ss = StandardScaler()
-        X_ss = self.ss.fit_transform(X)
+        self.X_ss = StandardScaler().fit(X, flux)
+        X_ss = self.X_ss.transform(X)
         
         self.reg = FitNNRegressor(n_hidden=400, n_epochs=100, batch_size=1, lr=0.01, lam=1., optimizer='RMSprop')
         
         self.reg.fit(X_ss, flux)
 
-    def predict(self, t, passband, copy=True):
+    def predict(self, t, passband):
+        """
+        Apply the augmentation model to the given observation mjds.
+        
+        Parameters:
+        -----------
+        t : array-like
+            Timestamps of light curve observations.
+        passband : array-like
+            Passband IDs for each observation.
+            
+        Returns:
+        --------
+        flux_pred : array-like
+            Flux of the light curve observations, approximated by the augmentation model.d
+        flux_err_pred : array-like
+            Flux errors of the light curve observations, estimated by the augmentation model.
+        """
         t        = np.array(t)
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        X_ss = self.ss.transform(X)
+        X_ss = self.X_ss.transform(X)
         
         flux_pred = self.reg.predict(X_ss)
+        flux_err_pred = np.empty(flux_pred.shape)
         
-        return flux_pred
+        return np.maximum(flux_pred, 0), flux_err_pred
     
     
     def augmentation(self, t_min, t_max, n_obs=100):
-        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug = self.predict(t_aug, passband_aug, copy=True)
+        """
+        The light curve augmentation.
         
-        return t_aug, flux_aug, passband_aug
+        Parameters:
+        -----------
+        t_min, t_max : float
+            Min and max timestamps of light curve observations.
+        n_obs : int
+            Number of observations in each passband required.
+            
+        Returns:
+        --------
+        t_aug : array-like
+            Timestamps of light curve observations.
+        flux_aug : array-like
+            Flux of the light curve observations, approximated by the augmentation model.
+        flux_err_pred : array-like
+            Flux errors of the light curve observations, estimated by the augmentation model.
+        passband_aug : array-like
+            Passband IDs for each observation.
+        """
+        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
+        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug)
+        
+        return t_aug, flux_aug, flux_err_aug, passband_aug
 
 
         
