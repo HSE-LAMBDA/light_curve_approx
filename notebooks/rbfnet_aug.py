@@ -50,7 +50,7 @@ class RBF(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.normal_(self.centres, 0, 1)
+        nn.init.normal_(self.centres, 0, 2)
         nn.init.constant_(self.sigmas, 1)
 
     def forward(self, input):
@@ -86,16 +86,18 @@ class FitRBFNetRegressor(object):
         self.optimizer = optimizer
         self.debug = debug
         self.scaler = StandardScaler()
+        self.y_scaler = StandardScaler()
         
     
     def fit(self, X, y):
         # Scaling
         X_ss = self.scaler.fit_transform(X)
+        y_ss = self.y_scaler.fit_transform(y[:, None])
         # Estimate model
         self.model = RBFNetRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).to(device)
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
-        y_tensor = torch.as_tensor(y.reshape(-1, 1), dtype=torch.float32, device=device)
+        y_tensor = torch.as_tensor(y_ss, dtype=torch.float32, device=device)
         # Create dataset for trainig procedure
         train_data = TensorDataset(X_tensor, y_tensor)
         # Estimate loss
@@ -146,7 +148,8 @@ class FitRBFNetRegressor(object):
         # Make predictions for X 
         y_pred = self.model(X_tensor)
         y_pred = y_pred.cpu().detach().numpy()
-        return np.maximum(y_pred, 0)
+        y_pred = self.y_scaler.inverse_transform(y_pred)
+        return y_pred
 
 
 class RBFNetAugmentation(object):
