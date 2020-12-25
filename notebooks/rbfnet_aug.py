@@ -65,9 +65,10 @@ class RBFNetRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(RBFNetRegressor, self).__init__()
         self.net = nn.Sequential(
-            RBF(n_inputs, n_hidden),
-            nn.Linear(n_hidden, n_hidden),
-            nn.ReLU(),
+            nn.Linear(n_inputs, n_inputs**2),
+            RBF(n_inputs**2, n_hidden),
+#             nn.Linear(n_hidden, n_hidden),
+#             nn.ReLU(),
             nn.Linear(n_hidden, 1)
         )
     def forward(self, x):
