@@ -83,9 +83,9 @@ class FitNNRegressor(object):
                 opt.step()
                 loss_history.append(loss.item())
             if self.debug:
-                print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
-            if np.mean(loss_history) < best_loss:
-                best_loss = np.mean(loss_history)
+                print("epoch: %i, mean loss: %.5f" % (epoch_i, np.nanmean(loss_history)))
+            if np.nanmean(loss_history) <= best_loss:
+                best_loss = np.nanmean(loss_history)
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
     
@@ -186,7 +186,6 @@ class FeaturesEngineeringAugmentation(object):
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-
         self.reg = FitNNRegressor(n_hidden=300, n_epochs=200, batch_size=1, lr=0.01, lam=0.01, optimizer='SGD')
         self.reg.fit(X_ss, y_ss)
     
