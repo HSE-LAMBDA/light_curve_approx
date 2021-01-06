@@ -10,17 +10,17 @@ from sklearn.preprocessing import StandardScaler
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # device = 'cpu'
 
-def add_log_lam(passband, passband2lam):
-    log_lam = np.array([passband2lam[i] for i in passband])
-    return log_lam
+#def add_log_lam(passband, passband2lam):
+#    log_lam = np.array([passband2lam[i] for i in passband])
+#    return log_lam
 
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
-    passband = []
+    passbands = []
     for i_pb in range(n_passbands):
         t += list(np.linspace(t_min, t_max, n_obs))
-        passband += [i_pb]*n_obs
-    return np.array(t), np.array(passband)
+        passbands += [i_pb] * n_obs
+    return np.array(t), np.array(passbands)
 
 
 class NNRegressor(nn.Module):
@@ -113,16 +113,16 @@ class SingleLayerNetAugmentation(object):
                 passband2lam  = {0: np.log10(3751.36), 1: np.log10(4741.64), 2: np.log10(6173.23), 
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
-        
+       
         self.passband2lam = passband2lam
-        
+        self.n_passbands = len(passband2lam)
         self.ss_x = None
         self.ss_y = None
         self.ss_t = None
         self.reg = None
     
     
-    def fit(self, t, flux, flux_err, passband):
+    def fit(self, t, flux, flux_err, log_lam):
         """
         Fit an augmentation model.
         
@@ -134,13 +134,12 @@ class SingleLayerNetAugmentation(object):
             Flux of the light curve observations.
         flux_err : array-like
             Flux errors of the light curve observations.
-        passband : array-like
-            Passband IDs for each observation.
+        log_lam : array-like
+            Log10 of wave length for filter (passband ID) of the observation.
         """
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        log_lam  = np.array(log_lam)
         
         X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         
@@ -153,7 +152,7 @@ class SingleLayerNetAugmentation(object):
         self.reg.fit(X_ss, y_ss)
     
     
-    def predict(self, t, passband, copy=True):
+    def predict(self, t, log_lam, copy=True):
         """
         Apply the augmentation model to the given observation mjds.
         
@@ -161,8 +160,8 @@ class SingleLayerNetAugmentation(object):
         -----------
         t : array-like
             Scaled timestamps of light curve observations.
-        passband : array-like
-            Passband IDs for each observation.
+        log_lam : array-like
+            Log10 of wave length for filter (passband ID) of the observation.
             
         Returns:
         --------
@@ -171,9 +170,8 @@ class SingleLayerNetAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        t = np.array(t)
+        log_lam  = np.array(log_lam)
         
         X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.ss_x.transform(X)
@@ -199,13 +197,12 @@ class SingleLayerNetAugmentation(object):
             Timestamps of light curve observations.
         flux_aug : array-like
             Flux of the light curve observations, approximated by the augmentation model.
-        flux_err_aug : array-like
-            Flux errors of the light curve observations, estimated by the augmentation model.
-        passband_aug : array-like
-            Passband IDs for each observation.
+        log_lam_aug : array-like
+            Log10 of wave length for filter (passband ID) of the observation.
         """
         
-        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug = self.predict(t_aug, passband_aug, copy=True)
+        t_aug, passbands_aug = create_aug_data(t_min, t_max, self.n_passbands, n_obs)
+        log_lam_aug = [self.passband2lam[passband] for passband in passbands_aug]
+        flux_aug = self.predict(t_aug, log_lam_aug, copy=True)
         
-        return t_aug, flux_aug, passband_aug
+        return t_aug, flux_aug, passbands_aug, log_lam_aug
