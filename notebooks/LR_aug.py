@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Lasso, Ridge, LogisticRegression
 from sklearn.preprocessing import StandardScaler
+
 
 
 def add_log_lam(passband, passband2lam):
@@ -27,7 +28,7 @@ def arr_degree(t, log_lam, degree=1):
 
 
 class LinearRegressionAugmentation(object):
-    def __init__(self, passband2lam):
+    def __init__(self, passband2lam, mod='LR'):
         """
         Light Curve Augmentation based on FitNNRegressor
         
@@ -40,12 +41,13 @@ class LinearRegressionAugmentation(object):
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
         self.passband2lam = passband2lam
+        self.mod = mod
         
         self.reg      = None
         self.X_scaler = None
         self.y_scaler = None
         self.ss_t     = None
-        self.poly = 7
+        self.poly = 1
         
     
     def fit(self, t, flux, flux_err, passband):
@@ -79,16 +81,29 @@ class LinearRegressionAugmentation(object):
         flux_err = np.array(flux_err)
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
-        t_deg = arr_degree(t, log_lam, self.poly)
-        X = np.concatenate(t_deg, axis=1)
+        X = np.concatenate((t.reshape((-1, 1)), 
+                            t_square.reshape((-1, 1)),
+                            t_cube.reshape((-1, 1)),
+                            t_del.reshape((-1, 1)),
+                            t_exp.reshape((-1, 1)),
+                            t_exp_m.reshape((-1, 1)),
+                            t_sin.reshape((-1, 1)),
+                            t_sinh.reshape((-1, 1)),
+                            log_lam.reshape((-1,1))), axis=1)
         
         self.X_scaler = StandardScaler().fit(X)
         X_ss = self.X_scaler.transform(X)
         
         self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
-        
-        self.reg = LinearRegression()
+        if self.mod == "Lasso":
+            self.reg = Lasso(alpha=0.05)
+        elif self.mod == "Ridge":
+            self.reg = Ridge()
+        elif self.mod == "LR":
+            self.reg = LinearRegression()
+        else:
+            self.reg = LinearRegression()
         self.reg.fit(X_ss, y_ss)
         
     
@@ -122,8 +137,15 @@ class LinearRegressionAugmentation(object):
         
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
-        t_deg = arr_degree(t, log_lam, self.poly)
-        X = np.concatenate(t_deg, axis=1)
+        X = np.concatenate((t.reshape((-1, 1)), 
+                            t_square.reshape((-1, 1)),
+                            t_cube.reshape((-1, 1)),
+                            t_del.reshape((-1, 1)),
+                            t_exp.reshape((-1, 1)),
+                            t_exp_m.reshape((-1, 1)),
+                            t_sin.reshape((-1, 1)),
+                            t_sinh.reshape((-1, 1)),
+                            log_lam.reshape((-1,1))), axis=1)
         
         X_ss = self.X_scaler.transform(X)
         
@@ -174,8 +196,16 @@ class LinearRegressionAugmentation(object):
         flux_err = np.array(flux_err)
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)
-        t_deg = arr_degree(t, log_lam, self.poly)
-        X = np.concatenate(t_deg, axis=1)
+        
+        X = np.concatenate((t.reshape((-1, 1)), 
+                            t_square.reshape((-1, 1)),
+                            t_cube.reshape((-1, 1)),
+                            t_del.reshape((-1, 1)),
+                            t_exp.reshape((-1, 1)),
+                            t_exp_m.reshape((-1, 1)),
+                            t_sin.reshape((-1, 1)),
+                            t_sinh.reshape((-1, 1)),
+                            log_lam.reshape((-1,1))), axis=1)
         
         X_ss = self.X_scaler.transform(X)
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
