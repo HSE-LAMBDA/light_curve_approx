@@ -10,6 +10,7 @@ def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
     return log_lam
 
+
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
     passband = []
