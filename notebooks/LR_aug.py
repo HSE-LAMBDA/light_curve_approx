@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression, Lasso, Ridge
+from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.preprocessing import StandardScaler
 
 
@@ -100,6 +100,8 @@ class LinearRegressionAugmentation(object):
             self.reg = Lasso(alpha=0.05)
         elif self.mod == "Ridge":
             self.reg = Ridge()
+        elif self.mod == "ElasticNet":
+            self.reg = ElasticNet(alpha=0.05)
         elif self.mod == "LR":
             self.reg = LinearRegression()
         else:
