@@ -4,7 +4,6 @@ import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def add_log_lam(passband, passband2lam):
@@ -128,24 +127,8 @@ class FeaturesEngineeringAugmentation(object):
         
         Parameters:
         -----------
-        t_min : array-like
-            Difference (timestamps - minimum(timestamps)).
         t : array-like
             Scaled timestamps of light curve observations.
-        t_square : array-like
-            Squares of the scaled timestamps.
-        t_cube : array-like
-            Cubes of the scaled timestamps.
-        t_del : array-like
-            1 / scaled timestamps.
-        t_exp : array-like
-            Exponent of the scaled timestamps.
-        t_exp_m : array-like
-            Exponent of minus scaled timestamps.
-        t_sin : array-like
-            Sinus of the scaled timestamps.
-        t_sinh : array-like
-            Hyperbolic sinus of the scaled timestamps.
         flux : array-like
             Flux of the light curve observations.
         flux_err : array-like
@@ -196,24 +179,8 @@ class FeaturesEngineeringAugmentation(object):
         
         Parameters:
         -----------
-        t_min : array-like
-            Difference (timestamps - minimum(timestamps)).
         t : array-like
             Scaled timestamps of light curve observations.
-        t_square : array-like
-            Squares of the scaled timestamps.
-        t_cube : array-like
-            Cubes of the scaled timestamps.
-        t_del : array-like
-            1 / scaled timestamps.
-        t_exp : array-like
-            Exponent of the scaled timestamps.
-        t_exp_m : array-like
-            Exponent of minus scaled timestamps.
-        t_sin : array-like
-            Sinus of the scaled timestamps.
-        t_sinh : array-like
-            Hyperbolic sinus of the scaled timestamps.
         passband : array-like
             Passband IDs for each observation.
             
@@ -251,7 +218,9 @@ class FeaturesEngineeringAugmentation(object):
         X_ss = self.ss_x.transform(X)
         
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
-        return np.maximum(flux_pred, np.zeros(flux_pred.shape))
+        flux_err_pred = np.zeros(flux_pred.shape)
+
+        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
@@ -278,6 +247,6 @@ class FeaturesEngineeringAugmentation(object):
         """
         
         t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug = self.predict(t_aug, passband_aug, copy=True)
+        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
         
-        return t_aug, flux_aug, passband_aug
+        return t_aug, flux_aug, flux_err_aug, passband_aug

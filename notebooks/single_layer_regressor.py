@@ -8,11 +8,10 @@ from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# device = 'cpu'
 
-#def add_log_lam(passband, passband2lam):
-#    log_lam = np.array([passband2lam[i] for i in passband])
-#    return log_lam
+def add_log_lam(passband, passband2lam):
+    log_lam = np.array([passband2lam[i] for i in passband])
+    return log_lam
 
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
@@ -122,7 +121,7 @@ class SingleLayerNetAugmentation(object):
         self.reg = None
     
     
-    def fit(self, t, flux, flux_err, log_lam):
+    def fit(self, t, flux, flux_err, passband):
         """
         Fit an augmentation model.
         
@@ -134,13 +133,15 @@ class SingleLayerNetAugmentation(object):
             Flux of the light curve observations.
         flux_err : array-like
             Flux errors of the light curve observations.
-        log_lam : array-like
-            Log10 of wave length for filter (passband ID) of the observation.
+        passband : array-like
+            Passband IDs for each observation.
         """
+        
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
-        log_lam  = np.array(log_lam)
-        
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+
         X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         
         self.ss_x = StandardScaler().fit(X)
@@ -152,7 +153,7 @@ class SingleLayerNetAugmentation(object):
         self.reg.fit(X_ss, y_ss)
     
     
-    def predict(self, t, log_lam, copy=True):
+    def predict(self, t, passband, copy=True):
         """
         Apply the augmentation model to the given observation mjds.
         
@@ -160,8 +161,8 @@ class SingleLayerNetAugmentation(object):
         -----------
         t : array-like
             Scaled timestamps of light curve observations.
-        log_lam : array-like
-            Log10 of wave length for filter (passband ID) of the observation.
+        passband : array-like
+            Passband IDs for each observation.
             
         Returns:
         --------
@@ -171,13 +172,16 @@ class SingleLayerNetAugmentation(object):
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
         t = np.array(t)
-        log_lam  = np.array(log_lam)
-        
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+
         X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.ss_x.transform(X)
         
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
-        return np.maximum(flux_pred, np.zeros(flux_pred.shape))
+        flux_err_pred = np.zeros(flux_pred.shape)
+        
+        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
@@ -197,12 +201,14 @@ class SingleLayerNetAugmentation(object):
             Timestamps of light curve observations.
         flux_aug : array-like
             Flux of the light curve observations, approximated by the augmentation model.
-        log_lam_aug : array-like
-            Log10 of wave length for filter (passband ID) of the observation.
+        flux_err_aug : array-like
+            Flux errors of the light curve observations, estimated by the augmentation model.
+        passband_aug : array-like
+            Passband IDs for each observation.
         """
         
         t_aug, passbands_aug = create_aug_data(t_min, t_max, self.n_passbands, n_obs)
         log_lam_aug = [self.passband2lam[passband] for passband in passbands_aug]
-        flux_aug = self.predict(t_aug, log_lam_aug, copy=True)
+        flux_aug, flux_err_aug = self.predict(t_aug, passbands_aug, copy=True)
         
-        return t_aug, flux_aug, passbands_aug, log_lam_aug
+        return t_aug, flux_aug, flux_err_aug, passbands_aug
