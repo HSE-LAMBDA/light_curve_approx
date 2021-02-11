@@ -87,7 +87,7 @@ class XGBRegressionAugmentation(object):
         self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
         
-        self.reg = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=6, objective='reg:squarederror')
+        self.reg = XGBRegressor(n_estimators=100, max_depth=6, objective='reg:squarederror')
         self.reg.fit(X_ss, y_ss)
         
     
