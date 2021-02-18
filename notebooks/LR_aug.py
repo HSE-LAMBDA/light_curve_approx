@@ -59,7 +59,7 @@ class LinearRegressionAugmentation(object):
         self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
-        X = np.concatenate(self.__array_joining(t, passband), axis=1)
+        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
         self.X_scaler = StandardScaler().fit(X)
         X_ss = self.X_scaler.transform(X)
@@ -97,7 +97,7 @@ class LinearRegressionAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        X = np.concatenate(self.__array_joining(t, passband), axis=1)
+        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
         X_ss = self.X_scaler.transform(X)
         
@@ -137,7 +137,7 @@ class LinearRegressionAugmentation(object):
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
         
-        X = np.concatenate(self.__array_joining(t, passband), axis=1)
+        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
         X_ss = self.X_scaler.transform(X)
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
@@ -145,7 +145,7 @@ class LinearRegressionAugmentation(object):
         return self.reg.score(X_ss, y_ss)
         
     
-    def __array_joining(self, t, passband):
+    def _array_joining(self, t, passband):
         t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam)

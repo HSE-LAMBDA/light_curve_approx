@@ -58,7 +58,7 @@ class XGBRegressionAugmentation(object):
         self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
-        X = np.concatenate(self.__array_joining(t, passband), axis=1)
+        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
         self.X_scaler = StandardScaler().fit(X)
         X_ss = self.X_scaler.transform(X)
@@ -66,7 +66,7 @@ class XGBRegressionAugmentation(object):
         self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
         
-        self.reg = XGBRegressor(n_estimators=100, max_depth=6, objective='reg:squarederror')
+        self.reg = XGBRegressor(n_estimators=100, learning_rate=0.3, max_depth=3, objective='reg:squarederror')
         self.reg.fit(X_ss, y_ss)
         
     
@@ -88,7 +88,7 @@ class XGBRegressionAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        X = np.concatenate(self.__array_joining(t, passband), axis=1)
+        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
         X_ss = self.X_scaler.transform(X)
         
@@ -123,23 +123,12 @@ class XGBRegressionAugmentation(object):
         return t_aug, flux_aug, flux_err_aug, passband_aug
     
         
-    def __array_joining(self, t, passband):
-        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
+    def _array_joining(self, t, passband):
+        t        = self.ss_t.transform(np.array(t).reshape((-1, 1))).reshape((-1, 1))
         passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        log_lam  = add_log_lam(passband, self.passband2lam).reshape((-1, 1))
         array_for_concatenate = [
-            t.reshape((-1, 1)),
-            np.power(t, 2).reshape((-1, 1)),
-            np.power(t, 3).reshape((-1, 1)),
-            1 / (t + 10).reshape((-1, 1)),
-            np.exp(t).reshape((-1, 1)),
-            np.exp(-t).reshape((-1, 1)),
-            np.sin(t).reshape((-1, 1)),
-            np.cos(t).reshape((-1, 1)),
-            np.sinh(t).reshape((-1, 1)),
-            np.cosh(t).reshape((-1, 1)),
-            log_lam.reshape((-1, 1)),
-            np.power(log_lam, 2).reshape((-1, 1)),
-            np.power(log_lam, 3).reshape((-1, 1))
+            t,
+            log_lam
         ]
         return array_for_concatenate
