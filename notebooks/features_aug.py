@@ -22,11 +22,11 @@ class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
         self.seq = nn.Sequential(
-            nn.Linear(n_inputs, 100),
+            nn.Linear(n_inputs, n_hidden),
             nn.ReLU(),
-            nn.Linear(100, 50),
+            nn.Linear(n_hidden, n_hidden // 2),
             nn.ReLU(),
-            nn.Linear(50, 1))
+            nn.Linear(n_hidden // 2, 1))
 
     def forward(self, x):
         return self.seq(x)
@@ -82,9 +82,9 @@ class FitNNRegressor(object):
                 opt.step()
                 loss_history.append(loss.item())
             if self.debug:
-                print("epoch: %i, mean loss: %.5f" % (epoch_i, np.nanmean(loss_history)))
-            if np.nanmean(loss_history) <= best_loss:
-                best_loss = np.nanmean(loss_history)
+                print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
+            if np.mean(loss_history) <= best_loss:
+                best_loss = np.mean(loss_history)
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
     
@@ -120,6 +120,32 @@ class FeaturesEngineeringAugmentation(object):
         self.ss_t = None
         self.reg = None
     
+    def get_features(self, t, passband, ss_t):
+        t_min    = t - np.array(t).min()
+        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
+        t_square = np.power(t, 2)
+        t_cube   = np.power(t, 3)
+        t_del    = 1 / (t + 10)
+        t_exp    = np.exp(t)
+        t_exp_m  = np.exp(-t)
+        t_sin    = np.sin(t)
+        t_sinh   = np.sinh(t)
+        
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        
+        X = np.concatenate((t,
+                            t_min.reshape((-1, 1)),
+                            t_square,
+                            t_cube,
+                            t_exp,
+                            t_exp_m,
+                            t_del,
+                            t_sin,
+                            t_sinh,
+                            log_lam.reshape((-1, 1))), axis=1)
+        return X
+
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -138,38 +164,14 @@ class FeaturesEngineeringAugmentation(object):
         """
         self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
 
-        t_min    = t - np.array(t).min()
-        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
-        t_square = np.power(t, 2)
-        t_cube   = np.power(t, 3)
-        t_del    = 1 / (t + 10)
-        t_exp    = np.exp(t)
-        t_exp_m  = np.exp(-t)
-        t_sin    = np.sin(t)
-        t_sinh   = np.sinh(t)
-        
-        flux     = np.array(flux)
-        flux_err = np.array(flux_err)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
-        
-        X = np.concatenate((t,
-                            t_min.reshape((-1, 1)),
-                            t_square,
-                            t_cube,
-                            t_exp,
-                            t_exp_m,
-                            t_del,
-                            t_sin,
-                            t_sinh,
-                            log_lam.reshape((-1, 1))), axis=1)
-        
+        X = self.get_features(t, passband, self.ss_t)
         self.ss_x = StandardScaler().fit(X)
         X_ss = self.ss_x.transform(X)
+        flux     = np.array(flux)
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitNNRegressor(n_hidden=300, n_epochs=200, batch_size=1, lr=0.01, lam=0.01, optimizer='SGD')
+        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, lr=0.01, lam=0.01, optimizer='SGD')
         self.reg.fit(X_ss, y_ss)
     
     
@@ -192,29 +194,7 @@ class FeaturesEngineeringAugmentation(object):
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
         
-        t_min    = t - np.array(t).min()
-        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
-        t_square = np.power(t, 2)
-        t_cube   = np.power(t, 3)
-        t_del    = 1 / (t + 10)
-        t_exp    = np.exp(t)
-        t_exp_m  = np.exp(-t)
-        t_sin    = np.sin(t)
-        t_sinh   = np.sinh(t)
-        
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
-        
-        X = np.concatenate((t,
-                            t_min.reshape((-1, 1)),
-                            t_square,
-                            t_cube,
-                            t_exp,
-                            t_exp_m,
-                            t_del,
-                            t_sin,
-                            t_sinh,
-                            log_lam.reshape((-1, 1))), axis=1)
+        X = self.get_features(t, passband, self.ss_t)
         X_ss = self.ss_x.transform(X)
         
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))

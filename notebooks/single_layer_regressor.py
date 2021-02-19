@@ -25,7 +25,8 @@ def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
-        self.seq = nn.Sequential(nn.Linear(n_inputs, n_hidden),
+        self.seq = nn.Sequential(
+                    nn.Linear(n_inputs, n_hidden),
                     nn.ReLU(),
                     nn.Linear(n_hidden, 1))
     def forward(self, x):
@@ -149,7 +150,7 @@ class SingleLayerNetAugmentation(object):
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitNNRegressor(n_hidden=125, n_epochs=300, batch_size=1, optimizer='SGD', lr=0.01)
+        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, optimizer='SGD', lr=0.01)
         self.reg.fit(X_ss, y_ss)
     
     
