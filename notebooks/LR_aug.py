@@ -146,23 +146,23 @@ class LinearRegressionAugmentation(object):
         
     
     def _array_joining(self, t, passband):
-        t        = self.ss_t.transform(np.array(t).reshape((-1, 1)))
+        t        = self.ss_t.transform(np.array(t).reshape((-1, 1))).reshape((-1, 1))
         passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        log_lam  = add_log_lam(passband, self.passband2lam).reshape((-1, 1))
         array_for_concatenate = [
             t.reshape((-1, 1)),
-            np.power(t, 2).reshape((-1, 1)),
-            np.power(t, 3).reshape((-1, 1)),
-            1 / (t + 10).reshape((-1, 1)),
-            np.exp(t).reshape((-1, 1)),
-            np.exp(-t).reshape((-1, 1)),
-            np.sin(t).reshape((-1, 1)),
-            np.cos(t).reshape((-1, 1)),
-            np.sinh(t).reshape((-1, 1)),
-            np.cosh(t).reshape((-1, 1)),
-            log_lam.reshape((-1, 1)),
-            np.power(log_lam, 2).reshape((-1, 1)),
-            np.power(log_lam, 3).reshape((-1, 1))
+            np.power(t, 2),
+            np.power(t, 3),
+            1 / (t + 10),
+            np.exp(t),
+            np.exp(-t),
+            np.sin(t),
+            np.cos(t),
+            np.sinh(t),
+            np.cosh(t),
+            log_lam,
+            np.power(log_lam, 2),
+            np.power(log_lam, 3)
         ]
         return array_for_concatenate
 
