@@ -1,6 +1,9 @@
+import numpy as np
+import pandas as pd
+
 import torch
 import torch.nn as nn
-import numpy as np
+import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
@@ -12,27 +15,25 @@ def add_log_lam(passband, passband2lam):
 
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
-    passband = []
+    passbands = []
     for i_pb in range(n_passbands):
         t += list(np.linspace(t_min, t_max, n_obs))
-        passband += [i_pb]*n_obs
-    return np.array(t), np.array(passband)
+        passbands += [i_pb] * n_obs
+    return np.array(t), np.array(passbands)
+
 
 class NNRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
         super(NNRegressor, self).__init__()
         self.seq = nn.Sequential(
-            nn.Linear(n_inputs, n_hidden),
-            nn.ReLU(),
-            nn.Linear(n_hidden, n_hidden // 2),
-            nn.ReLU(),
-            nn.Linear(n_hidden // 2, 1))
-
+                    nn.Linear(n_inputs, n_hidden),
+                    nn.ReLU(),
+                    nn.Linear(n_hidden, 1))
     def forward(self, x):
         return self.seq(x)
     
-class FitNNRegressor(object):
     
+class FitNNRegressor(object):
     def __init__(self, n_hidden=10, n_epochs=10, batch_size=64, lr=0.01, lam=0., optimizer='Adam', debug=0):        
         self.model = None
         self.n_hidden = n_hidden
@@ -49,7 +50,7 @@ class FitNNRegressor(object):
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
         y_tensor = torch.as_tensor(y, dtype=torch.float32, device=device)
-        # Create dataset for trainig procedure
+        # Create dataset for trainig procedureData
         train_data = TensorDataset(X_tensor, y_tensor)
         # Estimate loss
         loss_func = nn.MSELoss()
@@ -71,14 +72,14 @@ class FitNNRegressor(object):
         # Start the model fit
         for epoch_i in range(self.n_epochs):
             loss_history = []
-            for x_batch, y_batch in DataLoader(train_data, batch_size=self.batch_size, shuffle=True):
+            for x_batch, y_batch in DataLoader(train_data, num_workers=2, batch_size=self.batch_size, shuffle=True):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)
                 # zero the parameter gradients
                 for param in self.model.parameters():
                     param.grad = None
-                
+
                 # backpropagate gradients
                 loss.backward()
                 # update the model weights
@@ -86,22 +87,23 @@ class FitNNRegressor(object):
                 loss_history.append(loss.item())
             if self.debug:
                 print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
-            if np.mean(loss_history) <= best_loss:
+            if np.mean(loss_history) < best_loss:
                 best_loss = np.mean(loss_history)
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
     
     def predict(self, X):
-        # Disable droout
-        self.model.train(False)
-        # Convert X and y into torch tensors
-        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
-        # Make predictions for X 
-        y_pred = self.model(X_tensor)
-        y_pred = y_pred.cpu().detach().numpy()
-        return y_pred
-
-class FeaturesEngineeringAugmentation(object):
+        with torch.no_grad():
+            # Disable droout
+            self.model.train(False)
+            # Convert X and y into torch tensors
+            X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
+            # Make predictions for X 
+            y_pred = self.model(X_tensor)
+            y_pred = y_pred.cpu().detach().numpy()
+            return y_pred
+    
+class SingleLayerNetAugmentation(object):
     
     def __init__(self, passband2lam):
         """
@@ -115,40 +117,14 @@ class FeaturesEngineeringAugmentation(object):
                 passband2lam  = {0: np.log10(3751.36), 1: np.log10(4741.64), 2: np.log10(6173.23), 
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
-        
+       
         self.passband2lam = passband2lam
-        
+        self.n_passbands = len(passband2lam)
         self.ss_x = None
         self.ss_y = None
         self.ss_t = None
         self.reg = None
     
-    def get_features(self, t, passband, ss_t):
-        t_min    = t - np.array(t).min()
-        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
-        t_square = np.power(t, 2)
-        t_cube   = np.power(t, 3)
-        t_del    = 1 / (t + 10)
-        t_exp    = np.exp(t)
-        t_exp_m  = np.exp(-t)
-        t_sin    = np.sin(t)
-        t_sinh   = np.sinh(t)
-        
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
-        
-        X = np.concatenate((t,
-                            t_min.reshape((-1, 1)),
-                            t_square,
-                            t_cube,
-                            t_exp,
-                            t_exp_m,
-                            t_del,
-                            t_sin,
-                            t_sinh,
-                            log_lam.reshape((-1, 1))), axis=1)
-        return X
-
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -165,16 +141,20 @@ class FeaturesEngineeringAugmentation(object):
         passband : array-like
             Passband IDs for each observation.
         """
-        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
+        
+        flux     = np.array(flux)
+        flux_err = np.array(flux_err)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
 
-        X = self.get_features(t, passband, self.ss_t)
+        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
+        
         self.ss_x = StandardScaler().fit(X)
         X_ss = self.ss_x.transform(X)
-        flux     = np.array(flux)
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, lr=0.01, lam=0.01, optimizer='SGD')
+        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, optimizer='SGD', lr=0.01)
         self.reg.fit(X_ss, y_ss)
     
     
@@ -196,13 +176,15 @@ class FeaturesEngineeringAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        
-        X = self.get_features(t, passband, self.ss_t)
+        t = np.array(t)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+
+        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
         X_ss = self.ss_x.transform(X)
         
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
         flux_err_pred = np.zeros(flux_pred.shape)
-
         return flux_pred, flux_err_pred
         
     
@@ -229,7 +211,8 @@ class FeaturesEngineeringAugmentation(object):
             Passband IDs for each observation.
         """
         
-        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
+        t_aug, passbands_aug = create_aug_data(t_min, t_max, self.n_passbands, n_obs)
+        log_lam_aug = [self.passband2lam[passband] for passband in passbands_aug]
+        flux_aug, flux_err_aug = self.predict(t_aug, passbands_aug, copy=True)
         
-        return t_aug, flux_aug, flux_err_aug, passband_aug
+        return t_aug, flux_aug, flux_err_aug, passbands_aug
