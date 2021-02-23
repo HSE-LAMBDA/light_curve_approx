@@ -69,7 +69,7 @@ class MLPRegressionAugmentation(object):
 
         self.reg = MLPRegressor(hidden_layer_sizes=(20,10,), solver='lbfgs', activation='tanh', learning_rate_init=0.001,
                                max_iter=90, batch_size=1)
-        self.reg.fit(X_ss, y_ss)
+        self.reg.fit(X_ss, y_ss.reshape((1, -1))[0])
     
     
     def predict(self, t, passband, copy=True):
@@ -98,7 +98,7 @@ class MLPRegressionAugmentation(object):
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         X_ss = self.ss.transform(X)
         
-        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
+        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss).reshape((-1, 1)))
         flux_err_pred = np.zeros(flux_pred.shape)
         return flux_pred, flux_err_pred
         
