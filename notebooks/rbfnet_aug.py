@@ -77,7 +77,7 @@ class RBFNetRegressor(nn.Module):
 
 class FitRBFNetRegressor(object):
     
-    def __init__(self, n_hidden=10, n_epochs=10, batch_size=64, lr=0.01, lam=0., optimizer='Adam', debug=0):        
+    def __init__(self, n_hidden=40, n_epochs=200, batch_size=100, lr=0.02, lam=0., optimizer='Adam', debug=0):        
         self.model = None
         self.n_hidden = n_hidden
         self.n_epochs = n_epochs
