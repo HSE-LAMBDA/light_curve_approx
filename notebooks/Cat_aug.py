@@ -4,7 +4,6 @@ from catboost import CatBoostRegressor
 from sklearn.preprocessing import StandardScaler
 
 
-
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
     return log_lam
@@ -65,9 +64,9 @@ class CatBoostRegressorAugmentation(object):
         self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
         
-        self.reg = CatBoostRegressor(n_estimators=None, max_depth=3, loss_function='RMSE', learning_rate=0.03, silent=silent)
-        self.reg.fit(X_ss, y_ss)
-        
+        self.reg = CatBoostRegressor(n_estimators=None, max_depth=3, loss_function='MultiRMSE', learning_rate=0.04, silent=silent)
+        self.reg.fit(X_ss, y_ss, plot=False)
+        # loss_function='MultiRMSE'
     
     def predict(self, t, passband, copy=True):
         """
@@ -131,3 +130,4 @@ class CatBoostRegressorAugmentation(object):
             log_lam,
         ]
         return array_for_concatenate
+
