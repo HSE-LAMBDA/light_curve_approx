@@ -92,14 +92,15 @@ class FitNNRegressor(object):
         self.model.load_state_dict(best_state)
     
     def predict(self, X):
-        # Disable droout
-        self.model.train(False)
-        # Convert X and y into torch tensors
-        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
-        # Make predictions for X 
-        y_pred = self.model(X_tensor)
-        y_pred = y_pred.cpu().detach().numpy()
-        return y_pred
+        with torch.no_grad():
+            # Disable droout
+            self.model.train(False)
+            # Convert X and y into torch tensors
+            X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
+            # Make predictions for X 
+            y_pred = self.model(X_tensor)
+            y_pred = y_pred.cpu().detach().numpy()
+            return y_pred
 
 class FeaturesEngineeringAugmentation(object):
     
@@ -203,7 +204,7 @@ class FeaturesEngineeringAugmentation(object):
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
         flux_err_pred = np.zeros(flux_pred.shape)
 
-        return flux_pred, flux_err_pred
+        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
