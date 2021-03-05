@@ -34,9 +34,19 @@ class MLPRegressionAugmentation(object):
         
         self.passband2lam = passband2lam
         
-        self.ss = None
+        self.ss_x = None
+        self.ss_y = None
+        self.ss_t = None
         self.reg = None
     
+    def get_features(self, t, passband, ss_t):
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
+
+        X = np.concatenate((t, log_lam.reshape((-1, 1))), axis=1)
+        return X
+
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -54,16 +64,13 @@ class MLPRegressionAugmentation(object):
             Passband IDs for each observation.
         """
         
-        t        = np.array(t)
+        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
+
+        X = self.get_features(t, passband, self.ss_t)
+        self.ss_x = StandardScaler().fit(X)
+        X_ss = self.ss_x.transform(X)
         flux     = np.array(flux)
-        flux_err = np.array(flux_err)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        
-        self.ss = StandardScaler()
-        X_ss = self.ss.fit_transform(X)
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
 
@@ -91,16 +98,13 @@ class MLPRegressionAugmentation(object):
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
         
-        t        = np.array(t)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        X = self.get_features(t, passband, self.ss_t)
+        X_ss = self.ss_x.transform(X)
         
-        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
-        X_ss = self.ss.transform(X)
-        
-        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss).reshape((-1, 1)))
+        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
         flux_err_pred = np.zeros(flux_pred.shape)
-        return flux_pred, flux_err_pred
+
+        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):

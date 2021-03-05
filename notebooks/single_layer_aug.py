@@ -3,7 +3,6 @@ import pandas as pd
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
@@ -50,7 +49,7 @@ class FitNNRegressor(object):
         # Convert X and y into torch tensors
         X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
         y_tensor = torch.as_tensor(y, dtype=torch.float32, device=device)
-        # Create dataset for trainig procedureData
+        # Create dataset for trainig procedure
         train_data = TensorDataset(X_tensor, y_tensor)
         # Estimate loss
         loss_func = nn.MSELoss()
@@ -72,7 +71,7 @@ class FitNNRegressor(object):
         # Start the model fit
         for epoch_i in range(self.n_epochs):
             loss_history = []
-            for x_batch, y_batch in DataLoader(train_data, num_workers=2, batch_size=self.batch_size, shuffle=True):
+            for x_batch, y_batch in DataLoader(train_data, batch_size=self.batch_size, shuffle=True):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)
@@ -87,7 +86,7 @@ class FitNNRegressor(object):
                 loss_history.append(loss.item())
             if self.debug:
                 print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
-            if np.mean(loss_history) < best_loss:
+            if np.mean(loss_history) <= best_loss:
                 best_loss = np.mean(loss_history)
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
@@ -119,12 +118,21 @@ class SingleLayerNetAugmentation(object):
         """
        
         self.passband2lam = passband2lam
-        self.n_passbands = len(passband2lam)
+
         self.ss_x = None
         self.ss_y = None
         self.ss_t = None
         self.reg = None
     
+    
+    def get_features(self, t, passband, ss_t):
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
+
+        X = np.concatenate((t, log_lam.reshape((-1, 1))), axis=1)
+        return X
+
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -142,19 +150,16 @@ class SingleLayerNetAugmentation(object):
             Passband IDs for each observation.
         """
         
-        flux     = np.array(flux)
-        flux_err = np.array(flux_err)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
+        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
 
-        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
-        
+        X = self.get_features(t, passband, self.ss_t)
         self.ss_x = StandardScaler().fit(X)
         X_ss = self.ss_x.transform(X)
+        flux     = np.array(flux)
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, optimizer='SGD', lr=0.01)
+        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, optimizer='SGD')
         self.reg.fit(X_ss, y_ss)
     
     
@@ -176,16 +181,14 @@ class SingleLayerNetAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        t = np.array(t)
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
 
-        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
+        X = self.get_features(t, passband, self.ss_t)
         X_ss = self.ss_x.transform(X)
         
         flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
         flux_err_pred = np.zeros(flux_pred.shape)
-        return flux_pred, flux_err_pred
+
+        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
@@ -211,8 +214,7 @@ class SingleLayerNetAugmentation(object):
             Passband IDs for each observation.
         """
         
-        t_aug, passbands_aug = create_aug_data(t_min, t_max, self.n_passbands, n_obs)
-        log_lam_aug = [self.passband2lam[passband] for passband in passbands_aug]
-        flux_aug, flux_err_aug = self.predict(t_aug, passbands_aug, copy=True)
+        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
+        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
         
-        return t_aug, flux_aug, flux_err_aug, passbands_aug
+        return t_aug, flux_aug, flux_err_aug, passband_aug
