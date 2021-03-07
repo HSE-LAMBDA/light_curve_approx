@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
@@ -72,7 +73,7 @@ class FitNNRegressor(object):
         # Start the model fit
         for epoch_i in range(self.n_epochs):
             loss_history = []
-            for x_batch, y_batch in DataLoader(train_data, num_workers=2, batch_size=self.batch_size, shuffle=True):
+            for x_batch, y_batch in DataLoader(train_data, batch_size=self.batch_size, shuffle=True):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)

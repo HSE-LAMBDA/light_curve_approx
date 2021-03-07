@@ -4,7 +4,8 @@ import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
