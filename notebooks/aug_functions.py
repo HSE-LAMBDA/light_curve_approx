@@ -61,9 +61,11 @@ def plot_light_curves(anobject, title=""):
         light_curve = get_passband(anobject, passband)
         plt.plot(light_curve['mjd'].values, light_curve['flux'].values, '-o', 
                     label=passband2name[passband], linewidth=2)
-    plt.xlabel('Modified Julian Date', fontsize=24)
+#    plt.xlabel("Modified Julian date", fontsize=24)
+    plt.xlabel('Модифицированная Юлианская дата', fontsize=24)
     plt.xticks(fontsize=22)
-    plt.ylabel('Flux', fontsize=24)
+#    plt.ylabel("Flux", fontsize=24)
+    plt.ylabel('Поток излучения', fontsize=24)
     plt.yticks(fontsize=22)
     plt.legend(loc='best', ncol=2, fontsize=24, columnspacing=1.0)
     plt.title(title, fontsize=28)
