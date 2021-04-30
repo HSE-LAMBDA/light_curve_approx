@@ -1,13 +1,14 @@
 import numpy as np
 import pandas as pd
-from catboost import CatBoostRegressor
+
 from sklearn.preprocessing import StandardScaler
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, Matern, RationalQuadratic, WhiteKernel, ConstantKernel as C
 
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
     return log_lam
-
 
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
@@ -18,10 +19,11 @@ def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     return np.array(t), np.array(passband)
 
 
-class CatBoostRegressorAugmentation(object):
+class GaussianProcessesAugmentation(object):
+    
     def __init__(self, passband2lam):
         """
-        Light Curve Augmentation based on XGBRegressor
+        Light Curve Augmentation based on Gaussian Processes Regression
         
         Parameters:
         -----------
@@ -31,14 +33,14 @@ class CatBoostRegressorAugmentation(object):
                 passband2lam  = {0: np.log10(3751.36), 1: np.log10(4741.64), 2: np.log10(6173.23), 
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
         """
-        self.passband2lam = passband2lam
-        self.reg      = None
-        self.X_scaler = None
-        self.y_scaler = None
-        self.ss_t     = None
         
+        self.passband2lam = passband2lam
+        
+        self.ss = None
+        self.reg = None
     
-    def fit(self, t, flux, flux_err, passband, silent=True):
+    
+    def fit(self, t, flux, flux_err, passband):
         """
         Fit an augmentation model.
         
@@ -53,19 +55,24 @@ class CatBoostRegressorAugmentation(object):
         passband : array-like
             Passband IDs for each observation.
         """
-        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
+        
+        t        = np.array(t)
         flux     = np.array(flux)
         flux_err = np.array(flux_err)
-        X = np.concatenate(self._array_joining(t, passband), axis=1)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        self.X_scaler = StandardScaler().fit(X)
-        X_ss = self.X_scaler.transform(X)
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         
-        self.y_scaler = StandardScaler().fit(flux.reshape((-1, 1)))
-        y_ss = self.y_scaler.transform(flux.reshape((-1, 1)))
+        self.ss = StandardScaler()
+        X_ss = self.ss.fit_transform(X)
         
-        self.reg = CatBoostRegressor(n_estimators=None, max_depth=3, loss_function='MultiRMSE', learning_rate=0.04, silent=silent)
-        self.reg.fit(X_ss, y_ss, plot=False)
+        kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel()
+        self.reg = GaussianProcessRegressor(kernel=kernel, normalize_y=True, n_restarts_optimizer=5, 
+                                            optimizer="fmin_l_bfgs_b", random_state=42)
+
+        self.reg.fit(X_ss, flux)
+    
     
     def predict(self, t, passband, copy=True):
         """
@@ -81,17 +88,22 @@ class CatBoostRegressorAugmentation(object):
         Returns:
         --------
         flux_pred : array-like
-            Flux of the light curve observations, approximated by the augmentation model.d
+            Flux of the light curve observations, approximated by the augmentation model.
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-        X = np.concatenate(self._array_joining(t, passband), axis=1)
         
-        X_ss = self.X_scaler.transform(X)
+        t        = np.array(t)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        flux_pred = self.y_scaler.inverse_transform(self.reg.predict(X_ss))
-        return np.maximum(flux_pred, 0), np.empty(flux_pred.shape)
-    
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        X_ss = self.ss.transform(X)
+        
+        flux_pred, flux_err_pred = self.reg.predict(X_ss, return_std=True)
+        
+        return flux_pred, flux_err_pred
+        
     
     def augmentation(self, t_min, t_max, n_obs=100):
         """
@@ -110,23 +122,13 @@ class CatBoostRegressorAugmentation(object):
             Timestamps of light curve observations.
         flux_aug : array-like
             Flux of the light curve observations, approximated by the augmentation model.
-        flux_err_pred : array-like
+        flux_err_aug : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         passband_aug : array-like
             Passband IDs for each observation.
         """
+        
         t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
         flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
-        return t_aug, flux_aug, flux_err_aug, passband_aug
-    
         
-    def _array_joining(self, t, passband):
-        t        = self.ss_t.transform(np.array(t).reshape((-1, 1))).reshape((-1, 1))
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam).reshape((-1, 1))
-        array_for_concatenate = [
-            t,
-            log_lam,
-        ]
-        return array_for_concatenate
-
+        return t_aug, flux_aug, flux_err_aug, passband_aug
