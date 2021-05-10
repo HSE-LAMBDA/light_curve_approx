@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler
 
 import torchbnn as bnn
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = 'cpu'
 
 def add_log_lam(passband, passband2lam):
@@ -30,9 +29,11 @@ class BNNRegressor(nn.Module):
         super(BNNRegressor, self).__init__()
         
         self.model = nn.Sequential(
-                                bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_inputs, out_features=n_hidden),
-                                nn.Tanh(),
-                                bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_hidden, out_features=1))
+                        bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_inputs, out_features=n_hidden),
+                        nn.ReLU(),
+                        bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_hidden, out_features=n_hidden // 2),
+                        nn.ReLU(),
+                        bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_hidden // 2, out_features=1))
 
     def forward(self, x):
         return self.model(x)
@@ -124,16 +125,34 @@ class BayesianNetAugmentation(object):
         self.ss_t = None
         self.reg = None
     
-    
     def get_features(self, t, passband, ss_t):
+#        t_min    = (t - np.array(t).min()).reshape((-1, 1))
+        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
+#        t_square = np.power(t, 2)
+#        t_cube   = np.power(t, 3)
+#        t_del    = 1 / (t + 10)
+#        t_exp    = np.exp(t)
+#        t_exp_m  = np.exp(-t)
+#        t_sin    = np.sin(t)
+#        t_sinh   = np.sinh(t)
+        
         passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
-#        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
-        t = np.array(t)
-
-        X = np.concatenate((t.reshape((-1, 1)), log_lam.reshape((-1, 1))), axis=1)
+        log_lam  = add_log_lam(passband, self.passband2lam).reshape((-1, 1))
+#        noise    = np.random.normal(0, 0.1, t.shape)
+       
+#        X = np.concatenate((t,
+#                            t_min,
+#                            t_square,
+#                            t_cube,
+#                            t_exp,
+#                            t_exp_m,
+#                            t_del,
+#                            t_sin,
+#                            t_sinh,
+#                            log_lam), axis=1)
+ 
+        X = np.concatenate((t, log_lam), axis=1)
         return X
-
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -160,8 +179,8 @@ class BayesianNetAugmentation(object):
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitBNNRegressor(n_hidden=200, n_epochs=400, lr=0.1, kl_weight=0.1, optimizer='Adam')
-        self.reg.fit(X_ss, flux)
+        self.reg = FitBNNRegressor(n_hidden=50, n_epochs=250, lr=0.1, kl_weight=0.15, optimizer='Adam')
+        self.reg.fit(X_ss, y_ss)
     
     
     def predict(self, t, passband, copy=True):
@@ -186,8 +205,7 @@ class BayesianNetAugmentation(object):
         X = self.get_features(t, passband, self.ss_t)
         X_ss = self.ss_x.transform(X)
         
-        flux_pred = self.reg.predict(X_ss)
-#        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
+        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
         flux_err_pred = np.zeros(flux_pred.shape)
 
         return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred

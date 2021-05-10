@@ -3,37 +3,82 @@ import pandas as pd
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
+
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
     return log_lam
 
+
 def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
     t = []
-    passbands = []
+    passband = []
     for i_pb in range(n_passbands):
         t += list(np.linspace(t_min, t_max, n_obs))
-        passbands += [i_pb] * n_obs
-    return np.array(t), np.array(passbands)
+        passband += [i_pb]*n_obs
+    return np.array(t), np.array(passband)
 
 
-class NNRegressor(nn.Module):
+def gaussian(alpha):
+    phi = torch.exp(-1*alpha.pow(2))
+    return phi
+
+
+def inverse_quadratic(alpha):
+    phi = torch.ones_like(alpha) / (torch.ones_like(alpha) + alpha.pow(2))
+    return phi
+
+
+# https://github.com/JeremyLinux/PyTorch-Radial-Basis-Function-Layer/blob/master/Torch%20RBF/torch_rbf.py
+class RBF(nn.Module):
+    def __init__(self, in_features, out_features, basis_func=gaussian):
+        super(RBF, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.centres = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.sigmas = nn.Parameter(torch.Tensor(out_features))
+        self.basis_func = basis_func
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.normal_(self.centres, 0, 2)
+        nn.init.constant_(self.sigmas, 1)
+
+    def forward(self, input):
+        size = (input.size(0), self.out_features, self.in_features)
+        x = input.unsqueeze(1).expand(size)
+        c = self.centres.unsqueeze(0).expand(size)
+        distances = (x - c).pow(2).sum(-1).pow(0.5) * self.sigmas.unsqueeze(0)
+        return self.basis_func(distances)
+    
+
+class RBFNetRegressor(nn.Module):
     def __init__(self, n_inputs=1, n_hidden=10):
-        super(NNRegressor, self).__init__()
-        self.seq = nn.Sequential(
-                    nn.Linear(n_inputs, n_hidden),
-                    nn.ReLU(),
-                    nn.Linear(n_hidden, 1))
+        super(RBFNetRegressor, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_inputs, n_inputs**2),
+            RBF(n_inputs**2, n_hidden),
+#             nn.Linear(n_hidden, n_hidden),
+#             nn.ReLU(),
+            nn.Linear(n_hidden, 1)
+        )
     def forward(self, x):
-        return self.seq(x)
+        return self.net(x)
+
+
+class FitRBFNetRegressor(object):
     
-    
-class FitNNRegressor(object):
-    def __init__(self, n_hidden=10, n_epochs=10, batch_size=64, lr=0.01, lam=0., optimizer='Adam', debug=0):        
+    def __init__(self, n_hidden=40, n_epochs=200, batch_size=100, lr=0.02, lam=0., optimizer='Adam', debug=0):        
         self.model = None
         self.n_hidden = n_hidden
         self.n_epochs = n_epochs
@@ -42,13 +87,19 @@ class FitNNRegressor(object):
         self.lam = lam
         self.optimizer = optimizer
         self.debug = debug
+        self.scaler = StandardScaler()
+        self.y_scaler = StandardScaler()
+        
     
     def fit(self, X, y):
+        # Scaling
+        X_ss = self.scaler.fit_transform(X)
+        y_ss = self.y_scaler.fit_transform(y[:, None])
         # Estimate model
-        self.model = NNRegressor(n_inputs=X.shape[1], n_hidden=self.n_hidden).to(device)
+        self.model = RBFNetRegressor(n_inputs=X_ss.shape[1], n_hidden=self.n_hidden).to(device)
         # Convert X and y into torch tensors
-        X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
-        y_tensor = torch.as_tensor(y, dtype=torch.float32, device=device)
+        X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
+        y_tensor = torch.as_tensor(y_ss, dtype=torch.float32, device=device)
         # Create dataset for trainig procedure
         train_data = TensorDataset(X_tensor, y_tensor)
         # Estimate loss
@@ -57,11 +108,11 @@ class FitNNRegressor(object):
         if self.optimizer == "Adam":
             opt = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         elif self.optimizer == "SGD":
-            opt = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.SGD(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         elif self.optimizer == "RMSprop":
-            opt = torch.optim.RMSprop(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.RMSprop(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         else:
-            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+            opt = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.lam)
         # Enable droout
         self.model.train(True)
         
@@ -75,10 +126,8 @@ class FitNNRegressor(object):
                 # make prediction on a batch
                 y_pred_batch = self.model(x_batch)
                 loss = loss_func(y_batch, y_pred_batch)
-                # zero the parameter gradients
-                for param in self.model.parameters():
-                    param.grad = None
-
+                # set gradients to zero
+                opt.zero_grad()
                 # backpropagate gradients
                 loss.backward()
                 # update the model weights
@@ -86,27 +135,30 @@ class FitNNRegressor(object):
                 loss_history.append(loss.item())
             if self.debug:
                 print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
-            if np.mean(loss_history) <= best_loss:
+            if np.mean(loss_history) < best_loss:
                 best_loss = np.mean(loss_history)
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
     
     def predict(self, X):
-        with torch.no_grad():
-            # Disable droout
-            self.model.train(False)
-            # Convert X and y into torch tensors
-            X_tensor = torch.as_tensor(X, dtype=torch.float32, device=device)
-            # Make predictions for X 
-            y_pred = self.model(X_tensor)
-            y_pred = y_pred.cpu().detach().numpy()
-            return y_pred
+        # Scaling
+        X_ss = self.scaler.transform(X)
+        # Disable droout
+        self.model.train(False)
+        # Convert X and y into torch tensors
+        X_tensor = torch.as_tensor(X_ss, dtype=torch.float32, device=device)
+        # Make predictions for X 
+        y_pred = self.model(X_tensor)
+        y_pred = y_pred.cpu().detach().numpy()
+        y_pred = self.y_scaler.inverse_transform(y_pred)
+        return y_pred
+
+
+class RBFNetAugmentation(object):
     
-class SingleLayerNetAugmentation(object):
-    
-    def __init__(self, passband2lam):
+    def __init__(self, passband2lam, **reg_kwargs):
         """
-        Light Curve Augmentation based on NNRegressor with new features
+        Light Curve Augmentation based on Radial Basis Function Network
         
         Parameters:
         -----------
@@ -115,23 +167,16 @@ class SingleLayerNetAugmentation(object):
             Example: 
                 passband2lam  = {0: np.log10(3751.36), 1: np.log10(4741.64), 2: np.log10(6173.23), 
                                  3: np.log10(7501.62), 4: np.log10(8679.19), 5: np.log10(9711.53)}
-        """
-       
+                                 
+        **reg_kwargs : keyword arguments for FitRBFNetRegressor
+        """        
         self.passband2lam = passband2lam
-
-        self.ss_x = None
-        self.ss_y = None
-        self.ss_t = None
+        self.reg_kwargs = reg_kwargs
+        
+        self.ss = None
         self.reg = None
-
-    def get_features(self, t, passband, ss_t):
-        passband = np.array(passband)
-        log_lam  = add_log_lam(passband, self.passband2lam)
-        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
-
-        X = np.concatenate((t, log_lam.reshape((-1, 1))), axis=1)
-        return X
-
+        
+    
     
     def fit(self, t, flux, flux_err, passband):
         """
@@ -140,7 +185,7 @@ class SingleLayerNetAugmentation(object):
         Parameters:
         -----------
         t : array-like
-            Scaled timestamps of light curve observations.
+            Timestamps of light curve observations.
         flux : array-like
             Flux of the light curve observations.
         flux_err : array-like
@@ -149,17 +194,16 @@ class SingleLayerNetAugmentation(object):
             Passband IDs for each observation.
         """
         
-        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
-
-        X = self.get_features(t, passband, self.ss_t)
-        self.ss_x = StandardScaler().fit(X)
-        X_ss = self.ss_x.transform(X)
+        t        = np.array(t)
         flux     = np.array(flux)
+        flux_err = np.array(flux_err)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
         
-        self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
-        y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitNNRegressor(n_hidden=80, n_epochs=100, batch_size=2, optimizer='SGD')
-        self.reg.fit(X_ss, y_ss)
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        
+        self.reg = FitRBFNetRegressor(**self.reg_kwargs)
+        self.reg.fit(X, flux)
     
     
     def predict(self, t, passband, copy=True):
@@ -169,7 +213,7 @@ class SingleLayerNetAugmentation(object):
         Parameters:
         -----------
         t : array-like
-            Scaled timestamps of light curve observations.
+            Timestamps of light curve observations.
         passband : array-like
             Passband IDs for each observation.
             
@@ -180,14 +224,17 @@ class SingleLayerNetAugmentation(object):
         flux_err_pred : array-like
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
-
-        X = self.get_features(t, passband, self.ss_t)
-        X_ss = self.ss_x.transform(X)
         
-        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
-        flux_err_pred = np.zeros(flux_pred.shape)
-
-        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
+        t        = np.array(t)
+        passband = np.array(passband)
+        log_lam  = add_log_lam(passband, self.passband2lam)
+        
+        X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
+        
+        flux_pred = self.reg.predict(X)
+        flux_err_pred = np.empty(flux_pred.shape)
+        
+        return np.maximum(0, flux_pred), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
