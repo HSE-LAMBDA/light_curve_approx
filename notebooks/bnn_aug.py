@@ -30,11 +30,11 @@ class BNNRegressor(nn.Module):
         
         self.model = nn.Sequential(
                         bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_inputs, out_features=n_hidden),
-                        nn.ReLU(),
+                        nn.LeakyReLU(),
                         bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_hidden, out_features=n_hidden // 2),
-                        nn.ReLU(),
+                        nn.LeakyReLU(),
                         bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=n_hidden // 2, out_features=1))
-
+        
     def forward(self, x):
         return self.model(x)
     
@@ -77,7 +77,7 @@ class FitBNNRegressor(object):
             y_pred = self.model(X_tensor)
             mse = mse_loss(y_pred, y_tensor)
             kl = kl_loss(self.model)
-            loss = mse + self.kl_weight*kl
+            loss = mse + self.kl_weight * kl
             opt.zero_grad()
             loss.backward()
             opt.step()   
@@ -92,12 +92,12 @@ class FitBNNRegressor(object):
         y_pred = y_pred.cpu().detach().numpy()
         return y_pred
     
-    def predict_n_times(self, X, n_times=100):
+    def predict_n_times(self, X, ss, n_times=100):
         predictions = []
         for i in range(n_times):
             y_pred = self.predict(X)
             predictions.append(y_pred)
-        predictions = np.array(predictions)
+        predictions = ss.inverse_transform(np.array(predictions))
         mean = predictions.mean(axis=0)
         std = predictions.std(axis=0)
         return mean, std
@@ -122,34 +122,12 @@ class BayesianNetAugmentation(object):
 
         self.ss_x = None
         self.ss_y = None
-        self.ss_t = None
         self.reg = None
     
-    def get_features(self, t, passband, ss_t):
-#        t_min    = (t - np.array(t).min()).reshape((-1, 1))
-        t        = ss_t.transform(np.array(t).reshape((-1, 1)))
-#        t_square = np.power(t, 2)
-#        t_cube   = np.power(t, 3)
-#        t_del    = 1 / (t + 10)
-#        t_exp    = np.exp(t)
-#        t_exp_m  = np.exp(-t)
-#        t_sin    = np.sin(t)
-#        t_sinh   = np.sinh(t)
-        
+    def get_features(self, t, passband):
+        t        = np.array(t).reshape((-1, 1))
         passband = np.array(passband)
         log_lam  = add_log_lam(passband, self.passband2lam).reshape((-1, 1))
-#        noise    = np.random.normal(0, 0.1, t.shape)
-       
-#        X = np.concatenate((t,
-#                            t_min,
-#                            t_square,
-#                            t_cube,
-#                            t_exp,
-#                            t_exp_m,
-#                            t_del,
-#                            t_sin,
-#                            t_sinh,
-#                            log_lam), axis=1)
  
         X = np.concatenate((t, log_lam), axis=1)
         return X
@@ -169,17 +147,15 @@ class BayesianNetAugmentation(object):
         passband : array-like
             Passband IDs for each observation.
         """
-        
-        self.ss_t = StandardScaler().fit(np.array(t).reshape((-1, 1)))
 
-        X = self.get_features(t, passband, self.ss_t)
+        X = self.get_features(t, passband)
         self.ss_x = StandardScaler().fit(X)
         X_ss = self.ss_x.transform(X)
-        flux     = np.array(flux)
+        flux = np.array(flux)
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitBNNRegressor(n_hidden=50, n_epochs=250, lr=0.1, kl_weight=0.15, optimizer='Adam')
+        self.reg = FitBNNRegressor(n_hidden=100, n_epochs=1000, lr=0.01, kl_weight=0.15, optimizer='Adam')
         self.reg.fit(X_ss, y_ss)
     
     
@@ -202,13 +178,12 @@ class BayesianNetAugmentation(object):
             Flux errors of the light curve observations, estimated by the augmentation model.
         """
 
-        X = self.get_features(t, passband, self.ss_t)
+        X = self.get_features(t, passband)
         X_ss = self.ss_x.transform(X)
         
-        flux_pred = self.ss_y.inverse_transform(self.reg.predict(X_ss))
-        flux_err_pred = np.zeros(flux_pred.shape)
+        flux_pred, flux_err_pred = self.reg.predict_n_times(X_ss, self.ss_y)
 
-        return np.maximum(flux_pred, np.zeros(flux_pred.shape)), flux_err_pred
+        return flux_pred, flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
@@ -235,6 +210,7 @@ class BayesianNetAugmentation(object):
         """
         
         t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
-        flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
+        X_aug = self.ss_x.transform(self.get_features(t_aug, passband_aug))
+        flux_aug, flux_err_aug = self.reg.predict_n_times(X_aug, self.ss_y)
         
         return t_aug, flux_aug, flux_err_aug, passband_aug
