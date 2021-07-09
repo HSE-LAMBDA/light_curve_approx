@@ -155,7 +155,7 @@ class BayesianNetAugmentation(object):
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitBNNRegressor(n_hidden=100, n_epochs=1000, lr=0.01, kl_weight=0.15, optimizer='Adam')
+        self.reg = FitBNNRegressor(n_hidden=40, n_epochs=400, lr=0.05, kl_weight=0.01, optimizer='Adam')
         self.reg.fit(X_ss, y_ss)
     
     
@@ -183,7 +183,7 @@ class BayesianNetAugmentation(object):
         
         flux_pred, flux_err_pred = self.reg.predict_n_times(X_ss, self.ss_y)
 
-        return flux_pred, flux_err_pred
+        return np.maximum(np.zeros(flux_pred.shape), flux_pred), flux_err_pred
         
     
     def augmentation(self, t_min, t_max, n_obs=100):
@@ -213,4 +213,4 @@ class BayesianNetAugmentation(object):
         X_aug = self.ss_x.transform(self.get_features(t_aug, passband_aug))
         flux_aug, flux_err_aug = self.reg.predict_n_times(X_aug, self.ss_y)
         
-        return t_aug, flux_aug, flux_err_aug, passband_aug
+        return t_aug, np.maximum(np.zeros(flux_aug.shape), flux_aug), flux_err_aug, passband_aug
