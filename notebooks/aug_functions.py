@@ -46,15 +46,15 @@ def create_approx_object(anobject, n=N_OBS):
     new_object = pd.concat(df_s, axis=0)
     return new_object
 
-def compile_obj(t, flux, passband):
+def compile_obj(t, flux, flux_err, passband):
     obj = pd.DataFrame()
     obj['mjd']      = t
     obj['flux']     = flux
-    obj['flux_err'] = np.array([None] * len(flux))
+    obj['flux_err'] = flux_err
     obj['passband'] = passband
     return obj
 
-def plot_light_curves(anobject, title=""):
+def plot_light_curves(anobject, suf="", title=""):
     anobject = anobject.sort_values('mjd')
     fig = plt.figure(figsize=(9, 5), tight_layout = {'pad': 0})
     for passband in range(6):
@@ -71,4 +71,5 @@ def plot_light_curves(anobject, title=""):
     plt.title(title, fontsize=28)
     plt.grid(True)
     plt.show()
-#    fig.savefig("../pictures/light_curve_{}.pdf".format(anobject.object_id.to_numpy()[0]))
+#    fig.savefig("../pictures/light_curve_{}_{}.pdf".format(anobject.object_id.to_numpy()[0], suf), 
+#                bbox_inches='tight', pad_inches=0.0)
