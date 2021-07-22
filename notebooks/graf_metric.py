@@ -30,4 +30,4 @@ def hist_log10(bins, name_metric='MAPE', *object_column):
     plt.grid(b=1)
     plt.legend()
     plt.title("Histogram log10( %s )" % name_metric)
-    
+    plt.show()
