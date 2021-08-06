@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, Matern, RationalQuadratic, WhiteKernel, ConstantKernel as C
-
+from sklearn.gaussian_process.kernels import RBF, Matern, RationalQuadratic, WhiteKernel, DotProduct, ConstantKernel as C
+from scipy.stats import wilcoxon
 
 def add_log_lam(passband, passband2lam):
     log_lam = np.array([passband2lam[i] for i in passband])
@@ -17,6 +18,16 @@ def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
         t += list(np.linspace(t_min, t_max, n_obs))
         passband += [i_pb]*n_obs
     return np.array(t), np.array(passband)
+
+def bootstrap_estimate_mean_stddev(arr, n_samples=10000):
+    arr = np.array(arr)
+    bs_samples = np.random.randint(0, len(arr), size=(n_samples, len(arr)))
+    bs_samples = arr[bs_samples].mean(axis=1)
+    sigma = np.sqrt(np.sum((bs_samples - bs_samples.mean())**2) / (n_samples - 1))
+    return bs_samples, sigma
+
+def wilcoxon_pvalue(arr1, arr2):
+    return wilcoxon(arr1, arr2).pvalue
 
 
 class GaussianProcessesAugmentation(object):
@@ -37,10 +48,10 @@ class GaussianProcessesAugmentation(object):
         self.passband2lam = passband2lam
         
         self.ss = None
+        self.sserr = None
         self.reg = None
     
-    
-    def fit(self, t, flux, flux_err, passband):
+    def fit(self, t, flux, flux_err, passband, kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel(), flag_err = False):
         """
         Fit an augmentation model.
         
@@ -64,13 +75,24 @@ class GaussianProcessesAugmentation(object):
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         
-        self.ss = StandardScaler()
-        X_ss = self.ss.fit_transform(X)
-        
-        kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel()
-        self.reg = GaussianProcessRegressor(kernel=kernel, normalize_y=True, n_restarts_optimizer=5, 
-                                            optimizer="fmin_l_bfgs_b", random_state=42)
+        X_error = (flux_err / np.std(flux)).reshape(-1)
 
+        self.ss = StandardScaler()
+        #self.sserr = StandardScaler(with_mean=False)
+        
+        #self.ss = RobustScaler((45.0, 55.0))
+        X_ss = self.ss.fit_transform(X)
+        #X_error = self.sserr.fit_transform(X_error).reshape(-1)
+
+        
+        #kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel()
+#         kernel = C(1.0) * Matern() * RBF([1.0, 1.0]) + Matern() #+ WhiteKernel()
+        if flag_err:
+            self.reg = GaussianProcessRegressor(kernel=kernel, alpha=X_error, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
+
+        else:
+            self.reg = GaussianProcessRegressor(kernel=kernel, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
+            
         self.reg.fit(X_ss, flux)
     
     
@@ -99,6 +121,7 @@ class GaussianProcessesAugmentation(object):
         
         X = np.concatenate((t.reshape(-1, 1), log_lam.reshape(-1, 1)), axis=1)
         X_ss = self.ss.transform(X)
+        #X_ss = X
         
         flux_pred, flux_err_pred = self.reg.predict(X_ss, return_std=True)
         
@@ -128,7 +151,7 @@ class GaussianProcessesAugmentation(object):
             Passband IDs for each observation.
         """
         
-        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs)
+        t_aug, passband_aug = create_aug_data(t_min, t_max, len(self.passband2lam), n_obs = n_obs)
         flux_aug, flux_err_aug = self.predict(t_aug, passband_aug, copy=True)
         
         return t_aug, flux_aug, flux_err_aug, passband_aug
