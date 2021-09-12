@@ -16,8 +16,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import tqdm
 from tqdm import tqdm
-import gp_aug_old
-from gp_aug_old import bootstrap_estimate_mean_stddev
+import gp_aug as gp_aug_old
+from gp_aug import bootstrap_estimate_mean_stddev
 from sklearn.gaussian_process.kernels import RBF, Matern, \
 RationalQuadratic, WhiteKernel, DotProduct, ConstantKernel as C
 
@@ -35,7 +35,8 @@ calculate_mjd = lambda x: x + diff_between_format_bts_and_mjd
 bts = pd.read_csv(path_to, sep =',')
 bts = bts.drop('Unnamed: 0', 1) 
 
-df_all = pd.read_csv(path + 'ANTARES.csv')
+#df_all = pd.read_csv(path + 'ANTARES.csv')
+df_all = pd.read_csv(path + 'ANTARES_10_in_g_r_bands.csv')
 df_all = df_all.drop('Unnamed: 0', 1)
 
 #print("Названия колонок в таблице ANTARES.csv со всеми кривыми блеска: \n\n", df_all.columns, "\n\n")
