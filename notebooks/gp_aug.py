@@ -21,10 +21,11 @@ def create_aug_data(t_min, t_max, n_passbands, n_obs=1000):
 
 def bootstrap_estimate_mean_stddev(arr, n_samples=10000):
     arr = np.array(arr)
+    np.random.seed(0)
     bs_samples = np.random.randint(0, len(arr), size=(n_samples, len(arr)))
     bs_samples = arr[bs_samples].mean(axis=1)
     sigma = np.sqrt(np.sum((bs_samples - bs_samples.mean())**2) / (n_samples - 1))
-    return bs_samples, sigma
+    return np.mean(bs_samples), sigma
 
 def wilcoxon_pvalue(arr1, arr2):
     return wilcoxon(arr1, arr2).pvalue
@@ -32,7 +33,7 @@ def wilcoxon_pvalue(arr1, arr2):
 
 class GaussianProcessesAugmentation(object):
     
-    def __init__(self, passband2lam):
+    def __init__(self, passband2lam, kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel(), flag_err = False):
         """
         Light Curve Augmentation based on Gaussian Processes Regression
         
@@ -48,10 +49,11 @@ class GaussianProcessesAugmentation(object):
         self.passband2lam = passband2lam
         
         self.ss = None
-        self.sserr = None
         self.reg = None
+        self.kernel = kernel
+        self.flag_err = flag_err
     
-    def fit(self, t, flux, flux_err, passband, kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel(), flag_err = False):
+    def fit(self, t, flux, flux_err, passband):
         """
         Fit an augmentation model.
         
@@ -87,11 +89,11 @@ class GaussianProcessesAugmentation(object):
         
         #kernel = C(1.0) * RBF([1.0, 1.0]) + WhiteKernel()
 #         kernel = C(1.0) * Matern() * RBF([1.0, 1.0]) + Matern() #+ WhiteKernel()
-        if flag_err:
-            self.reg = GaussianProcessRegressor(kernel=kernel, alpha=X_error, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
+        if self.flag_err:
+            self.reg = GaussianProcessRegressor(kernel=self.kernel, alpha=X_error**2, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
 
         else:
-            self.reg = GaussianProcessRegressor(kernel=kernel, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
+            self.reg = GaussianProcessRegressor(kernel=self.kernel, optimizer="fmin_l_bfgs_b", n_restarts_optimizer=5, normalize_y=True, random_state=42)
             
         self.reg.fit(X_ss, flux)
     
