@@ -165,7 +165,7 @@ class BayesianNetAugmentation(object):
         
         self.ss_y = StandardScaler().fit(flux.reshape((-1, 1)))
         y_ss = self.ss_y.transform(flux.reshape((-1, 1)))
-        self.reg = FitBNNRegressor(n_hidden=15, n_epochs=1000, lr=0.07, kl_weight=0.0001, optimizer='Adam')
+        self.reg = FitBNNRegressor(n_hidden=15, n_epochs=1500, lr=0.07, kl_weight=0.0001, optimizer='Adam')
         self.reg.fit(X_ss, y_ss)
     
     
