@@ -3,6 +3,7 @@ import pandas as pd
 
 import torch
 import torch.nn as nn
+from copy import deepcopy
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 
@@ -87,7 +88,7 @@ class FitNNRegressor(object):
             if self.debug:
                 print("epoch: %i, mean loss: %.5f" % (epoch_i, np.mean(loss_history)))
             if np.mean(loss_history) <= best_loss:
-                best_loss = np.mean(loss_history)
+                best_loss = deepcopy(np.mean(loss_history))
                 best_state = self.model.state_dict()
         self.model.load_state_dict(best_state)
     
