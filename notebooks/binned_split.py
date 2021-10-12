@@ -5,7 +5,7 @@ import numpy as np
 def binned_train_test_split(*arrays, t, bin_size=5, 
                             test_size=None, train_size=None, 
                             random_state=None, shuffle=True, 
-                            bounds_in_train=True):
+                            bounds_in_train=True, offset=0):
     
     """
     Split arrays or matrices into random binned train and test subsets
@@ -38,6 +38,8 @@ def binned_train_test_split(*arrays, t, bin_size=5,
         then stratify must be None.
     bounds_in_train : bool, default=True
         Whether or not to include bins on bounds into train sample.
+    offset : float
+        Offset of the first bin position.
         
 
     Returns
@@ -46,7 +48,13 @@ def binned_train_test_split(*arrays, t, bin_size=5,
         List containing train-test split of inputs.
     """
 
-    bins = np.arange(t.min(), t.max(), bin_size)
+    bins_r = np.arange(t.min() + offset, 
+                       t.max() + offset, 
+                       bin_size)
+    bins_l = np.arange(t.min() + offset, 
+                       t.min(), 
+                       -bin_size)[1:][::-1]
+    bins = np.concatenate((bins_l, bins_r))
     bin_inds = np.digitize(t, bins)
     
     i_bins = np.unique(bin_inds)
