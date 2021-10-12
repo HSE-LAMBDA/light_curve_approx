@@ -49,7 +49,7 @@ def binned_train_test_split(*arrays, t, bin_size=5,
     """
 
     bins_r = np.arange(t.min() + offset, 
-                       t.max() + offset, 
+                       t.max() + bin_size + offset, 
                        bin_size)
     bins_l = np.arange(t.min() + offset, 
                        t.min(), 
@@ -66,6 +66,10 @@ def binned_train_test_split(*arrays, t, bin_size=5,
             raise ValueError("At least 4 bins are required. Reduce bin_size please.")
         bounds = i_bins[[0, -1]]
         i_bins = i_bins[1:-1]
+        if (test_size is not None) and (test_size < 1):
+            test_size = np.round(test_size * (len(i_bins) + 2) /  len(i_bins), 15)
+        if (train_size is not None) and (train_size < 1):
+            train_size = np.round((train_size * (len(i_bins) + 2) - 2) /  len(i_bins), 15)
     
     i_bins_train, i_bins_test = train_test_split(i_bins, 
                                                  test_size=test_size, 
