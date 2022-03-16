@@ -38,10 +38,10 @@ def nrmse_metric(flux, flux_err, flux_pred):
     -----------
     flux : array-like
         Flux of the light curve observations.
+    flux_err : array-like
+            Flux errors of the light curve observations.
     flux_pred : array-like
         Flux of the light curve observations, approximated by the augmentation model.
-    flux_err_pred : array-like
-        Flux errors of the light curve observations, estimated by the augmentation model.
         
     Returns:
     --------
@@ -63,10 +63,10 @@ def picp_metric(flux, flux_pred, flux_err_pred, alpha=0.90):
     -----------
     flux : array-like
         Flux of the light curve observations.
-    flux_err : array-like
-            Flux errors of the light curve observations.
     flux_pred : array-like
         Flux of the light curve observations, approximated by the augmentation model.
+    flux_err_pred : array-like
+        Flux errors of the light curve observations, estimated by the augmentation model.
     alpha : float [0, 1]
         Fraction of the distribution inside confident intervals.
         
