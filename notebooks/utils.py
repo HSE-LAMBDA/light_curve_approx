@@ -24,7 +24,7 @@ def nlpd_metric(flux, flux_pred, flux_err_pred):
         NLPD metrc value.
     """
     
-    metric = (flux - flux_pred)**2 / (2 * flux_err_pred**2) + np.log(flux_err_pred) + np.log(2 * np.pi)
+    metric = (flux - flux_pred)**2 / (2 * flux_err_pred**2) + np.log(flux_err_pred) + 0.5 * np.log(2 * np.pi)
     
     return metric.mean()
 
