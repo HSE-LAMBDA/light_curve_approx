@@ -29,7 +29,7 @@ def nlpd_metric(flux, flux_pred, flux_err_pred):
     return metric.mean()
 
 
-def nrmse_o_metric(flux, flux_err, flux_pred):
+def nrmse_o_metric(flux, flux_pred, flux_err):
     """
     The normalized Root Mean Squared Error (nRMSEo) metric based on observed error. 
     Source: http://mlg.eng.cam.ac.uk/pub/pdf/QuiRasSinetal06.pdf
@@ -38,10 +38,10 @@ def nrmse_o_metric(flux, flux_err, flux_pred):
     -----------
     flux : array-like
         Flux of the light curve observations.
-    flux_err : array-like
-            Flux errors of the light curve observations.
     flux_pred : array-like
         Flux of the light curve observations, approximated by the augmentation model.
+    flux_err : array-like
+            Flux errors of the light curve observations.
         
     Returns:
     --------
@@ -139,7 +139,7 @@ def regression_quality_metrics_report(flux, flux_pred, flux_err=None, flux_err_p
     if (flux_err is not None) and (flux_err_pred is not None):
         
         nlpd  = nlpd_metric(flux, flux_pred, flux_err_pred)
-        nrmseo = nrmse_o_metric(flux, flux_err, flux_pred)
+        nrmseo = nrmse_o_metric(flux, flux_pred, flux_err)
         nrmsep = nrmse_p_metric(flux, flux_pred, flux_err_pred)
         picp_68  = picp_metric(flux, flux_pred, flux_err_pred, alpha=0.68268) # 1 sigma
         picp_95  = picp_metric(flux, flux_pred, flux_err_pred, alpha=0.95450) # 2 sigmas
