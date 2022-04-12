@@ -6,9 +6,8 @@ from fulu import nf_aug
 from fulu import mlp_reg_aug
 from fulu import gp_aug
 import numpy as np
-from sklearn.model_selection import train_test_split
-import aug_standart_ztf_re as aug_standart_ztf
-import utils_re as utils
+#from sklearn.model_selection import train_test_split
+import utils
 from importlib import reload
 import warnings
 warnings.filterwarnings('ignore')
@@ -16,11 +15,12 @@ import matplotlib
 import matplotlib.pyplot as plt
 import tqdm
 from tqdm import tqdm
-from aug_standart_ztf import bootstrap_estimate_mean_stddev
 from sklearn.gaussian_process.kernels import RBF, Matern, \
 RationalQuadratic, WhiteKernel, DotProduct, ConstantKernel as C
 import os
 import time
+from binned_split import binned_train_test_split
+
 
 np.random.seed(0)
 
@@ -55,37 +55,54 @@ obj_names = df_all['object_id'].unique()
 df_all.loc[df_all.obj_type == 'SN Ia', 'obj_type'] = 1
 df_all.loc[df_all.obj_type != 1, 'obj_type'] = 0
 
+def get_object(df, name_in_BTSdf):
+    """df - csv with all obj"""
+    assert isinstance(name_in_BTSdf, str), 'Попробуйте ввести название объекта из ZTF'
+    if name_in_BTSdf[:2] == 'ZT':
+        df_num = df[df.object_id == name_in_BTSdf]
+        return df_num
+    else:
+        return None
+
+def get_passband(anobject, passband):
+    light_curve = anobject[anobject.passband == passband]
+    return light_curve
+
+def compile_obj(t, flux, flux_err, passband):
+    obj = pd.DataFrame()
+    obj['mjd']      = t
+    obj['flux']     = flux
+    obj['flux_err'] = flux_err
+    obj['passband'] = passband
+    return obj
+
+def bootstrap_estimate_mean_stddev(arr, n_samples=10000):
+    arr = np.array(arr)
+    np.random.seed(0)
+    bs_samples = np.random.randint(0, len(arr), size=(n_samples, len(arr)))
+    bs_samples = arr[bs_samples].mean(axis=1)
+    sigma = np.sqrt(np.sum((bs_samples - bs_samples.mean())**2) / (n_samples - 1))
+    return np.mean(bs_samples), sigma
+
 def aug(step = 1000, model_name = 'NN (pytorch)', N_OBS = 2000, TEST_SIZE = 0.5):
     model = models_dict[model_name]
-    print(model_name)
-#     for name, i in tqdm(zip(obj_names[::step], range(len(obj_names[::step])))):
-#         # fit augmentation model
-#         anobject = aug_standart_ztf.get_object(df_all, name)
-#         anobject_train, anobject_test = train_test_split(anobject, test_size = TEST_SIZE, random_state=11)
-
-#         model.fit(anobject_train['mjd'].values, anobject_train['flux'].values, 
-#               anobject_train['flux_err'].values, anobject_train['passband'].values)
-
-#         # predict flux for unseen observations
-#         flux_pred, flux_err_pred = model.predict(anobject_test['mjd'].values, anobject_test['passband'].values)
-
-#         # augmentation
-#         t_aug, flux_aug, flux_err_aug, passbands_aug = model.augmentation(anobject['mjd'].min(), 
-#                                                                       anobject['mjd'].max(), 
-#                                                                       n_obs=N_OBS)
-#         anobject_test_pred = anobject_test.copy()
-#         anobject_test_pred['flux'], anobject_test_pred['flux_err'] = flux_pred, flux_err_pred
-
-#         anobject_aug = aug_standart_ztf.compile_obj(t_aug, flux_aug, flux_err_aug, passbands_aug)
-
-#     plt.show()    
+    print(model_name)   
     report = pd.DataFrame(columns=["ID", 'RMSE', 'MAE', 'RSE', 'RAE', 'MAPE', 'NLPD', 'NRMSEO', 'NRMSEP', 'PICP_68', 'PICP_95'])
     timest = []
     for name, i in tqdm(zip(df_all['object_id'].unique(), range(len(df_all['object_id'].unique())))):
         # fit augmentation model
         
-        anobject = aug_standart_ztf.get_object(df_all, name)
-        anobject_train, anobject_test = train_test_split(anobject, test_size = TEST_SIZE, random_state=11)
+        anobject = get_object(df_all, name)
+        #anobject_train, anobject_test = train_test_split(anobject, test_size = TEST_SIZE, random_state=11)
+        t = anobject['mjd'].values
+
+        anobject_train, anobject_test = binned_train_test_split(anobject, 
+                                                        t=t, 
+                                                        bin_size=3, 
+                                                        test_size=2, 
+                                                        shuffle=True, 
+                                                        random_state=42, 
+                                                        bounds_in_train=True)
         
         start_time_moment =  time.time()
         
@@ -108,7 +125,7 @@ def aug(step = 1000, model_name = 'NN (pytorch)', N_OBS = 2000, TEST_SIZE = 0.5)
         anobject_test_pred = anobject_test.copy()
         anobject_test_pred['flux'], anobject_test_pred['flux_err'] = flux_pred, flux_err_pred
 
-        anobject_aug = aug_standart_ztf.compile_obj(t_aug, flux_aug, flux_err_aug, passbands_aug)
+        anobject_aug = compile_obj(t_aug, flux_aug, flux_err_aug, passbands_aug)
 
         metrics = utils.regression_quality_metrics_report(anobject_test['flux'].values,
                                                           flux_pred,
