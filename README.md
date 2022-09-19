@@ -1,6 +1,12 @@
-# light_curve_approx project
+# Welcome to the light curve approximation project
 
-## `PLAsTiCC` data
+This is the official repository with the scripts and results of the experiments described in the following paper:
+
+- M. Demianenko, K. Malanchev, E. Samorodova, M. Sysak, A. Shiriaev, D. Derkach, M. Hushchyn. Toward an understanding of the properties of neural network approaches for supernovae light curve approximation, 	arXiv:2209.07542 (2022). [[arxiv](https://doi.org/10.48550/arXiv.2209.07542)]
+
+The light curve approximation methods are implemented in the [Fulu](https://github.com/HSE-LAMBDA/fulu) python library: [https://github.com/HSE-LAMBDA/fulu](https://github.com/HSE-LAMBDA/fulu)
+
+## PLAsTiCC data
 
 Find the full unblind dataset [on Zenodo](https://zenodo.org/record/2539456).
 You can use [this script](https://github.com/HSE-LAMBDA/supernovae_classification/blob/master/notebooks/download_data.py) to download the data.
